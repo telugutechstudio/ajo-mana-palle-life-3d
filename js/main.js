@@ -29,6 +29,7 @@ function defaultState() {
     inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 6, veg: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    home: { level: 0, fan: false, radio: false, tv: false, tvDay: 0 },
     stove: { state: 'empty', until: 0 }, // empty | cooking | ready
     eggsLeft: [true, true, true],
     milked: false, prayed: false,
@@ -47,6 +48,7 @@ function load() {
       const d = defaultState(), s = Object.assign(defaultState(), JSON.parse(raw));
       s.inv = Object.assign(d.inv, s.inv); // older saves miss the newer items
       s.quests = Object.assign(d.quests, s.quests);
+      s.home = Object.assign(d.home, s.home);
       return s;
     }
   } catch (e) { /* storage blocked */ }
@@ -294,6 +296,64 @@ function muggu(x, z, size = 2.4, parent = scene) {
 // Player's home
 const home = house(0, 0, 0);
 muggu(0, 5, 2.6);
+// Home upgrades: tiled roof (penkutillu), concrete house (pakka illu), fan, radio and TV
+const homeUp = { tiles: new THREE.Group(), slab: new THREE.Group(), fan: new THREE.Group(), radio: new THREE.Group(), tv: new THREE.Group(), screen: null };
+{
+  const c = home.children;
+  homeUp.walls = c.slice(0, 6); homeUp.door = c[6]; homeUp.windows = [c[7], c[8]]; homeUp.thatch = c[10];
+  // Keep the front door open so you can see inside, with a small lamp in the room
+  homeUp.door.position.set(-0.56, 1, 3.2); homeUp.door.rotation.y = Math.PI / 2;
+  const lamp = new THREE.PointLight(0xffd8a0, 0.9, 7, 1.5); lamp.position.set(0, 2, 0); home.add(lamp);
+  home.add(homeUp.tiles, homeUp.slab, homeUp.fan, homeUp.radio, homeUp.tv);
+  // Penkutillu: low clay-tile roof with ridge lines
+  const tileRoof = mesh(new THREE.ConeGeometry(Math.hypot(7.2, 6.2) / 2 + 0.5, 1.9, 4), 0xb5532e, 0, 2.6 + 0.95, 0, homeUp.tiles);
+  tileRoof.rotation.y = Math.PI / 4; tileRoof.scale.set(1, 1, 6.2 / 7.2);
+  for (let i = 0; i < 6; i++) box(7.4 - i * 1.1, 0.06, 0.08, 0x8a3a1e, 0, 2.75 + i * 0.3, 3.1 - i * 0.52, homeUp.tiles).castShadow = false;
+  // Pakka illu: flat slab with a parapet and a black water tank
+  box(6.8, 0.3, 5.8, 0xe8e2d6, 0, 2.75, 0, homeUp.slab);
+  for (const [w, d, x, z] of [[6.8, 0.15, 0, 2.85], [6.8, 0.15, 0, -2.85], [0.15, 5.8, 3.33, 0], [0.15, 5.8, -3.33, 0]]) box(w, 0.5, d, 0xf0ead8, x, 3.15, z, homeUp.slab);
+  mesh(new THREE.CylinderGeometry(0.55, 0.55, 1, 12), 0x222222, 2, 3.4, -1.6, homeUp.slab);
+  box(6.8, 0.12, 1.2, 0xd0c8b8, 0, 2.62, 3.2, homeUp.slab); // sunshade over the door
+  // Ceiling fan
+  homeUp.fan.position.set(0, 2.35, 0);
+  mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 6), 0x888888, 0, 0.15, 0, homeUp.fan);
+  mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.1, 10), 0xdddddd, 0, 0, 0, homeUp.fan);
+  homeUp.blades = new THREE.Group(); homeUp.fan.add(homeUp.blades);
+  for (let i = 0; i < 3; i++) { const b = box(0.7, 0.02, 0.14, 0xeeeeee, 0.4, 0, 0, new THREE.Group()); const p = b.parent; p.rotation.y = i * Math.PI * 2 / 3; homeUp.blades.add(p); }
+  // Radio on the front step
+  homeUp.radio.position.set(-2.3, 0.25, 3.05);
+  box(0.42, 0.26, 0.16, 0x7a3a1a, 0, 0.13, 0, homeUp.radio);
+  box(0.2, 0.16, 0.02, 0xc8c8c8, -0.07, 0.14, 0.085, homeUp.radio);
+  box(0.015, 0.4, 0.015, 0xcccccc, 0.15, 0.45, 0, homeUp.radio).rotation.z = -0.4;
+  // TV on a stand against the back wall, screen glows
+  homeUp.tv.position.set(0, 0, -2.1);
+  box(1.3, 0.6, 0.45, 0x6b4426, 0, 0.3, 0, homeUp.tv);
+  box(1.05, 0.66, 0.12, 0x151515, 0, 0.95, 0, homeUp.tv);
+  homeUp.screen = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.56), new THREE.MeshBasicMaterial({ color: 0x223344 }));
+  homeUp.screen.position.set(0, 0.95, 0.065); homeUp.tv.add(homeUp.screen);
+}
+const HOME_LEVELS = [
+  { name: ['Hut (gudisa)', 'గుడిసె'], price: 0 },
+  { name: ['Tiled house (penkutillu)', 'పెంకుటిల్లు'], price: 300, perk: ['You tire 20% slower', 'అలసట 20% తక్కువ'] },
+  { name: ['Concrete house (pakka illu)', 'పక్కా ఇల్లు'], price: 800, perk: ['You tire 40% slower', 'అలసట 40% తక్కువ'] },
+];
+const FURNITURE = [
+  { id: 'fan', emoji: '🌀', name: ['Ceiling fan', 'ఫ్యాన్'], price: 80, perk: ['No extra tiredness in summer heat', 'ఎండాకాలం వేడికి అలసట ఉండదు'] },
+  { id: 'radio', emoji: '📻', name: ['Radio', 'రేడియో'], price: 60, perk: ['Songs at home and the morning weather report', 'ఇంటి దగ్గర పాటలు, ఉదయం వాతావరణ వార్తలు'] },
+  { id: 'tv', emoji: '📺', name: ['TV', 'టీవీ'], price: 250, perk: ['Watch TV in the evening: energy +20', 'సాయంత్రం టీవీ చూస్తే శక్తి +20'] },
+];
+function applyHome() {
+  const H = S.home, L = H.level;
+  homeUp.thatch.visible = L === 0; homeUp.tiles.visible = L === 1; homeUp.slab.visible = L === 2;
+  const wall = [0xd89a63, 0xf3ece0, 0xf5c66a][L];
+  if (!homeUp.wallMat) homeUp.wallMat = new THREE.MeshLambertMaterial();
+  homeUp.wallMat.color.set(wall);
+  homeUp.walls.forEach(w => { w.material = homeUp.wallMat; });
+  homeUp.door.material = mat([0x5a3418, 0x6b3a1a, 0x2a8a8a][L]);
+  homeUp.windows.forEach(w => { w.material = mat([0x3a2614, 0x3a2614, 0x2a5aa8][L]); });
+  homeUp.fan.visible = H.fan; homeUp.radio.visible = H.radio; homeUp.tv.visible = H.tv;
+}
+function homeComfort() { return [1, 0.8, 0.6][S.home.level]; }
 // Neighbours' houses
 house(-14, 2, 0.15, 0xe0b080); house(16, -2, -0.2, 0xcf8c5c); house(-12, 22, Math.PI, 0xd99f70); house(14, 24, Math.PI + 0.1, 0xe2a874);
 muggu(-14, 7, 2); muggu(16, 3, 2);
@@ -1077,6 +1137,43 @@ function openShop() {
   renderHud();
 }
 
+// Home panel: sleep, watch TV, upgrade the house, buy furniture
+function canSleep() { return S.time >= 19 * 60 || S.energy <= 20; }
+function openHome() {
+  const H = S.home, L = HOME_LEVELS[H.level], next = HOME_LEVELS[H.level + 1], h = S.time / 60;
+  const perks = [L.perk, ...FURNITURE.filter(f => H[f.id]).map(f => f.perk)].filter(Boolean).map(p => '• ' + tr(...p));
+  const options = [
+    { label: canSleep() ? tr('🛏️ Sleep', '🛏️ నిద్రపో') : tr('🛏️ Sleep (after 7 PM or when tired)', '🛏️ నిద్ర (రాత్రి 7 తర్వాత / అలసినప్పుడు)'), disabled: !canSleep(),
+      fn: () => { closePanel(); busy = { s: { label: () => tr('Sleep', 'నిద్రపో'), time: 1.2, done: sleep }, t: 0, total: 1.2, tickAcc: 0 }; $('progressLabel').textContent = tr('Sleeping…', 'నిద్ర…'); $('progress').classList.remove('hidden'); } },
+  ];
+  if (H.tv) options.push({ label: H.tvDay === S.day ? tr('📺 Already watched TV today', '📺 ఈ రోజు టీవీ చూశారు') : h < 17 ? tr('📺 TV shows start at 5 PM', '📺 టీవీ సాయంత్రం 5 నుంచి') : tr('📺 Watch TV (energy +20)', '📺 టీవీ చూడు (శక్తి +20)'),
+    disabled: H.tvDay === S.day || h < 17,
+    fn: () => { H.tvDay = S.day; S.energy = Math.min(100, S.energy + 20); S.time += 30; tvGlow = 6; SFX.good(); toast(tr('📺 A fun Telugu movie song! Energy +20', '📺 సరదా తెలుగు సినిమా పాట! శక్తి +20'), 'good'); openHome(); } });
+  if (next) options.push({ label: `🏠 ${tr('Upgrade to', 'అప్‌గ్రేడ్:')} ${tr(...next.name)} · ₹${next.price}`, disabled: S.money < next.price,
+    fn: () => { S.money -= next.price; H.level++; applyHome(); fade(); SFX.good(); toast(tr(`🏠 New home: ${next.name[0]}!`, `🏠 కొత్త ఇల్లు: ${next.name[1]}!`), 'good'); renderHud(); save(); openHome(); } });
+  for (const f of FURNITURE) if (!H[f.id]) options.push({ label: `${f.emoji} ${tr('Buy', 'కొను:')} ${tr(...f.name)} · ₹${f.price}`, disabled: S.money < f.price,
+    fn: () => { S.money -= f.price; H[f.id] = true; applyHome(); SFX.coin(); toast(`${f.emoji} ${tr(...f.perk)}`, 'good'); renderHud(); save(); openHome(); } });
+  openPanel({ icon: 'home', title: tr(...L.name), text: perks.length ? perks.join('<br>') : tr('A simple hut. Earn money to make it better!', 'చిన్న గుడిసె. డబ్బు సంపాదించి బాగు చేసుకోండి!'), options });
+}
+let tvGlow = 0, radioAcc = 4;
+// The radio plays a short folk tune now and then while you are near home
+const TUNE = [523, 587, 659, 784, 880, 1047];
+function updateHome(dt) {
+  if (S.home.fan) homeUp.blades.rotation.y += dt * 9;
+  const h = S.time / 60;
+  if (homeUp.tv.visible) {
+    tvGlow = Math.max(0, tvGlow - dt);
+    const on = tvGlow > 0 || (h >= 18 && h < 22);
+    homeUp.screen.material.color.setHSL(on ? (performance.now() / 1500) % 1 : 0.6, on ? 0.5 : 0.2, on ? 0.45 + Math.random() * 0.1 : 0.12);
+  }
+  if (S.home.radio && playing && h > 6 && h < 21 && Math.hypot(player.position.x, player.position.z - 2) < 9) {
+    radioAcc -= dt;
+    if (radioAcc <= 0) {
+      radioAcc = rand(6, 10);
+      for (let i = 0; i < 6; i++) setTimeout(() => tone(TUNE[Math.floor(Math.random() * TUNE.length)], 0.22, 'triangle', 0.025), i * 230);
+    }
+  }
+}
 // What each villager says, depending on their quest
 const FARM_TIPS = [
   ['Water your plants every day. They only grow on days they got water.', 'మొక్కలకు రోజూ నీళ్ళు పోయి బాబు. నీళ్ళు పోసిన రోజే పెరుగుతాయి.'],
@@ -1252,9 +1349,7 @@ const spots = [
     need: () => S.prayed ? tr('Already prayed today', 'ఈ రోజు దండం పెట్టారు') : '',
     time: 2.5, start: SFX.bell,
     done: () => { S.prayed = true; S.energy = Math.min(100, S.energy + 15); completeTask('pray'); toast(tr('🙏 Blessed! Energy +15', '🙏 దేవుడి దీవెన! శక్తి +15'), 'good'); } },
-  { at: new THREE.Vector3(0, 0, 3.3), r: 1.9, label: () => tr('Sleep', 'నిద్రపో'),
-    need: () => (S.time < 19 * 60 && S.energy > 20) ? tr('Sleep after 7 PM (or when tired)', 'రాత్రి 7 తర్వాత నిద్రపోండి (లేదా అలసినప్పుడు)') : '',
-    time: 1.2, done: () => sleep() },
+  { at: new THREE.Vector3(0, 0, 3.3), r: 1.9, label: () => tr('Home', 'ఇల్లు'), need: () => '', time: 0.2, done: () => openHome() },
 ];
 // Ugadi pachadi takes over the chulha while you hold the items, so it goes first
 spots.unshift({ at: CHULHA, r: 2.3, hidden: () => !(isFest('ugadi') && S.inv.bowl && !S.done.fest), label: () => tr('Make Ugadi pachadi', 'ఉగాది పచ్చడి చేయి'),
@@ -1378,7 +1473,7 @@ function sleep() {
   const se = season(), f = festival(), newSeason = (dayOfYear() - 1) % 7 === 0;
   if (f) toast(tr(`${f.emoji} Happy ${f.name[0]}! Day ${S.day}`, `${f.emoji} ${f.name[1]} శుభాకాంక్షలు! రోజు ${S.day}`), 'good');
   else toast(tr(`🌅 Good morning! Day ${S.day}`, `🌅 శుభోదయం! రోజు ${S.day}`) + (newSeason ? tr(` · ${se.name[0]} begins`, ` · ${se.name[1]} మొదలైంది`) : ''), 'good');
-  if (S.weather.rain) toast(tr(`🌦️ Rain expected around ${fmtHour(S.weather.start)} today`, `🌦️ ఈ రోజు ${fmtHour(S.weather.start)} కి వర్షం వచ్చేలా ఉంది`));
+  if (S.weather.rain && (S.home.radio || S.home.tv)) toast(tr(`🌦️ Rain expected around ${fmtHour(S.weather.start)} today`, `🌦️ ఈ రోజు ${fmtHour(S.weather.start)} కి వర్షం వచ్చేలా ఉంది`));
   if (S.farm.some(p => p.stage === 3)) toast(tr('🍅 Your tomatoes are ripe! Harvest them.', '🍅 టమాటాలు పండాయి! కోయండి.'), 'good');
   save();
 }
@@ -1576,8 +1671,8 @@ function frame() {
       move.set(fx / len, 0, fz / len).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(speed * dt);
       player.position.add(move);
       collide(player.position);
-      const hour = S.time / 60, heat = season().id === 'summer' && hour > 11 && hour < 16 && wet < 0.3 ? 1.6 : 1; // summer afternoons tire you faster
-      S.energy = Math.max(0, S.energy - dt * (run ? 0.6 : 0.18) * heat);
+      const hour = S.time / 60, heat = season().id === 'summer' && hour > 11 && hour < 16 && wet < 0.3 && !S.home.fan ? 1.6 : 1; // summer afternoons tire you faster
+      S.energy = Math.max(0, S.energy - dt * (run ? 0.6 : 0.18) * heat * homeComfort());
       bob += dt * (run ? 13 : 9);
       stepAcc += dt * (run ? 1.6 : 1);
       if (stepAcc > 0.45) { stepAcc = 0; SFX.step(); }
@@ -1636,6 +1731,7 @@ function frame() {
   cart.legs.forEach((l, i) => { l.rotation.x = Math.sin(cart.phase * 2 + (i % 2 ? Math.PI : 0) + (i > 3 ? 1 : 0)) * 0.4 * Math.min(1, Math.abs(cart.speed)); });
   cart.tails.forEach((t, i) => { t.rotation.z = Math.sin(performance.now() / 500 + i) * 0.25; });
   updateFestivals(dt);
+  updateHome(dt);
   updateWeather(dt);
   updateRain(dt);
 
@@ -1653,6 +1749,7 @@ S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
 renderFarm();
 placeBall();
 applyDay();
+applyHome();
 renderMenu();
 updateSky();
 addEventListener('beforeunload', save);
