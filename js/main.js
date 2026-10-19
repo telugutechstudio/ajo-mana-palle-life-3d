@@ -13,7 +13,7 @@ const EMOJI = { water: '💧', wood: '🪵', egg: '🥚', milk: '🥛', cow: '�
   sun: '☀️', moon: '🌙', chicken: '🐔', home: '🏡', shop: '🛒', check: '✅', fire: '🔥', tea: '🌿', leaf: '🍃', speaker: '🔊', rice: '🌾',
   hut: '🛖', tasks: '📋', gear: '⚙️', speech: '💬', bucket: '🪣', axe: '🪓', party: '🎉', pray: '🙏',
   rain: '🌧️', storm: '⛈️', veg: '🍅', seed: '🌱', ball: '⚽', basket: '🧺', umbrella: '☔', oldman: '👴', woman: '👩', boy: '👦', farmer: '🧑‍🌾',
-  brinjal: '🍆', chilli: '🌶️', corn: '🌽', goat: '🐐', buffalo: '🐃', duck: '🦆', gmilk: '🐐', fodder: '🌾', fish: '🐟', bigfish: '🐠', rod: '🎣', cricket: '🏏', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
+  brinjal: '🍆', chilli: '🌶️', corn: '🌽', goat: '🐐', buffalo: '🐃', duck: '🦆', gmilk: '🐐', fodder: '🌾', fish: '🐟', bigfish: '🐠', rod: '🎣', ricebag: '🍚', sapling: '🪴', cricket: '🏏', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
 function ico(key, cls = '') {
   return `<span class="i3d ${cls}" data-e="${EMOJI[key] || '❔'}"><img src="icons/${key}.webp" alt="" draggable="false" onerror="this.parentNode.classList.add('fail')"></span>`;
 }
@@ -26,9 +26,10 @@ function defaultState() {
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
-    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
+    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ricebag: 0, sapling: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    paddy: { stage: 2, watered: false }, // -1 empty, 0 saplings … 4 golden and ready to cut
     cricketDay: 0,
     fishing: { day: 0, n: 0 },
     animals: { goat: 0, buffalo: 0, ducks: 0, fedDay: 0, goatDay: 0, buffaloDay: 0, duckDay: 0 },
@@ -54,6 +55,7 @@ function load() {
       s.quests = Object.assign(d.quests, s.quests);
       s.home = Object.assign(d.home, s.home);
       s.animals = Object.assign(d.animals, s.animals);
+      s.paddy = Object.assign(d.paddy, s.paddy);
       if (!JSON.parse(raw).seeds) s.seeds.tomato = s.inv.seed || 0; // seeds used to be one item
       s.inv.seed = 0;
       s.farm.forEach(p => { p.crop = p.crop || 'tomato'; });
@@ -533,9 +535,14 @@ const TEMPLE_FRONT = new THREE.Vector3(TEMPLE.x, 0, TEMPLE.z + 4.6);
 }
 
 // Paddy field with rows of rice plants
+const paddy = { water: null, plants: null };
+const PADDY_SPOT = new THREE.Vector3(-13.1, 0, -18);
 {
   const fx = -22, fz = -18, fw = 16, fd = 12;
-  const water = mesh(new THREE.PlaneGeometry(fw, fd), 0x5f8f6a, fx, 0.05, fz); water.rotation.x = -Math.PI / 2; water.castShadow = false;
+  const water = mesh(new THREE.PlaneGeometry(fw, fd), new THREE.MeshLambertMaterial({ color: 0x5f8f6a }), fx, 0.05, fz); water.rotation.x = -Math.PI / 2; water.castShadow = false;
+  paddy.water = water;
+  // Canal from the pond into the field
+  const canal = mesh(new THREE.PlaneGeometry(0.7, 4.6), 0x3a7aa0, -24, 0.055, -9.9); canal.rotation.x = -Math.PI / 2; canal.castShadow = false;
   for (const [w, d, x, z] of [[fw + 0.6, 0.6, fx, fz - fd / 2], [fw + 0.6, 0.6, fx, fz + fd / 2], [0.6, fd, fx - fw / 2, fz], [0.6, fd, fx + fw / 2, fz]]) box(w, 0.35, d, 0x8a6a3a, x, 0.17, z);
   const geo = new THREE.ConeGeometry(0.09, 0.6, 4);
   geo.translate(0, 0.3, 0);
@@ -550,6 +557,14 @@ const TEMPLE_FRONT = new THREE.Vector3(TEMPLE.x, 0, TEMPLE.z + 4.6);
   }
   inst.castShadow = false; inst.receiveShadow = true;
   scene.add(inst);
+  paddy.plants = inst;
+}
+function renderPaddy() {
+  const st = S.paddy.stage;
+  paddy.plants.visible = st >= 0;
+  paddy.plants.scale.y = [0.25, 0.45, 0.65, 0.85, 1][Math.max(0, st)];
+  paddyMat.color.set(st >= 4 ? 0xd8b84a : [0x9ad860, 0x84cc4a, 0x6fbf3a, 0x5fae30][Math.max(0, st)]);
+  paddy.water.material.color.set(S.paddy.watered || wet > 0.5 ? 0x4f8faa : st < 0 ? 0x7a6a4a : 0x5f8f6a);
 }
 
 // Crops: each season has its own; the farm grows one crop per plot
@@ -1166,7 +1181,7 @@ const ANIMALS = {
 // Season colours and festival decorations for today
 function applyDay() {
   const se = season(), f = festival(), id = f && f.id;
-  groundMat.color.set(se.ground); paddyMat.color.set(se.paddy);
+  groundMat.color.set(se.ground);
   fest.all.visible = !!f;
   fest.muggulu.visible = id === 'sankranti' || id === 'deepavali';
   fest.kites.visible = id === 'sankranti';
@@ -1203,7 +1218,7 @@ function neem(x, z) {
 for (let i = 0; i < 40; i++) {
   const a = srand(0, 6.28), r = srand(18, 50), x = Math.cos(a) * r, z = Math.sin(a) * r;
   if (Math.abs(x - 6) < 3 || Math.abs(z - 14) < 2.5) continue;
-  if (Math.hypot(x + 24, z + 4) < 5.5 || (Math.abs(x - 22) < 4.5 && Math.abs(z - 22) < 4.5)) continue; // keep the pond and the pen clear
+  if ((x > -30.5 && x < -13.5 && z > -24.5 && z < -11.5) || Math.hypot(x + 24, z + 4) < 5.5 || (Math.abs(x - 22) < 4.5 && Math.abs(z - 22) < 4.5)) continue; // keep the pond and the pen clear
   if (i % 3) mesh(new THREE.IcosahedronGeometry(srand(0.4, 0.8), 0), 0x4a8a30, x, 0.35, z);
   else mesh(new THREE.DodecahedronGeometry(srand(0.25, 0.5), 0), 0x9a958c, x, 0.2, z);
 }
@@ -1279,7 +1294,7 @@ function toast(msg, type = '') {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
   setTimeout(() => t.remove(), 3200);
 }
-const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['fish', '🐟'], ['bigfish', '🐠'], ['rod', '🎣'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
+const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['ricebag', '🍚'], ['sapling', '🪴'], ['fish', '🐟'], ['bigfish', '🐠'], ['rod', '🎣'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
 let invShown = '';
 function renderInventory(changed) {
   const count = k => k === 'seed' ? Object.values(S.seeds).reduce((a, b) => a + b, 0) : S.inv[k];
@@ -1367,7 +1382,7 @@ function closePanel() {
 }
 function pickOption(i) { const o = panelOpts[i]; if (o && !o.disabled) o.fn(); }
 
-const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35, gmilk: 20, fish: 15, bigfish: 40 }; // everything the shop buys
+const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35, gmilk: 20, fish: 15, bigfish: 40, ricebag: 40 }; // everything the shop buys
 function produceValue() { return Object.keys(PRICE).reduce((t, k) => t + (S.inv[k] || 0) * PRICE[k], 0); }
 function sellAll(mult = 1) { const v = Math.round(produceValue() * mult); for (const k in PRICE) S.inv[k] = 0; S.money += v; return v; }
 const VEG = ['veg', 'brinjal', 'chilli', 'corn'];
@@ -1389,6 +1404,8 @@ function openShop() {
         } },
       ...(S.inv.rod ? [] : [{ label: tr('🎣 Fishing rod · ₹40', '🎣 గాలం · ₹40'), disabled: S.money < 40,
         fn: () => { S.money -= 40; S.inv.rod = 1; SFX.coin(); renderInventory('rod'); toast(tr('🎣 Go fishing at the pond, west of the coop!', '🎣 కోళ్ల గూడు పడమర వైపు చెరువులో చేపలు పట్టండి!'), 'good'); openShop(); } }]),
+      ...(S.paddy.stage < 0 && !S.inv.sapling ? [{ label: tr('🪴 Paddy saplings for the field · ₹30', '🪴 పొలానికి వరి నారు · ₹30'), disabled: S.money < 30,
+        fn: () => { S.money -= 30; S.inv.sapling = 1; SFX.coin(); renderInventory('sapling'); openShop(); } }] : []),
       { label: tr('🌾 Fodder bundle · ₹5', '🌾 గడ్డి కట్ట · ₹5'), disabled: S.money < 5,
         fn: () => { S.money -= 5; S.inv.fodder++; SFX.coin(); renderInventory('fodder'); openShop(); } },
       { label: tr('Buy tea powder · ₹15', 'టీ పొడి కొను · ₹15'), disabled: S.money < 15,
@@ -1462,6 +1479,7 @@ function openPen() {
 }
 // What each villager says, depending on their quest
 const FARM_TIPS = [
+  ['Keep the paddy field flooded from the canal every day. In five days it turns golden: 6 bags of rice and straw for your animals!', 'వరి పొలానికి రోజూ కాలువ నీళ్ళు పెట్టు. ఐదు రోజుల్లో బంగారు రంగు: 6 బస్తాల బియ్యం, పశువులకు గడ్డి!'],
   ['Water your plants every day. They only grow on days they got water.', 'మొక్కలకు రోజూ నీళ్ళు పోయి బాబు. నీళ్ళు పోసిన రోజే పెరుగుతాయి.'],
   ['When it rains, the sky waters your farm for free!', 'వర్షం పడితే నీ పొలానికి దేవుడే నీళ్ళు పోస్తాడు!'],
   ['Each season has its own crops: winter tomato and brinjal, summer chilli, monsoon corn. Seeds are at the kirana shop.', 'ప్రతి కాలానికి వేరే పంట: చలికాలం టమాటా, వంకాయ; ఎండాకాలం మిరపకాయ; వర్షాకాలం మొక్కజొన్న. విత్తనాలు కిరాణా షాప్‌లో.'],
@@ -1537,6 +1555,14 @@ function farmAction() {
   if (dry) return { id: 'water', label: tr('Water the crops', 'మొక్కలకు నీళ్ళు పోయి'), need: S.inv.water ? '' : tr('Need water (well)', 'నీళ్ళు కావాలి (బావి)'), time: 2 };
   if (empty === F.length) return idle(Object.values(S.seeds).some(n => n) ? tr(`These seeds don't grow in ${season().name[0]}`, `ఈ విత్తనాలు ${season().name[1]}లో పెరగవు`) : tr('Buy seeds at the shop', 'షాప్‌లో విత్తనాలు కొనండి'));
   return idle(tr('All watered. Plants grow overnight', 'నీళ్ళు పోశారు. రాత్రికి పెరుగుతాయి'));
+}
+// Paddy: plant saplings, flood the field from the canal each day, cut when golden
+function paddyAction() {
+  const P = S.paddy, idle = need => ({ id: 'none', label: tr('Paddy field', 'వరి పొలం'), need, time: 0 });
+  if (P.stage >= 4) return { id: 'cut', label: tr('Harvest the paddy', 'వరి కోత కోయి'), need: '', time: 4 };
+  if (P.stage < 0) return S.inv.sapling ? { id: 'plant', label: tr('Plant paddy saplings (naatlu)', 'వరి నాట్లు వేయి'), need: '', time: 4 } : idle(tr('Buy saplings at the shop', 'షాప్‌లో నారు కొనండి'));
+  if (!P.watered) return { id: 'water', label: tr('Open the canal to flood the field', 'కాలువ తెరిచి పొలానికి నీళ్ళు పెట్టు'), need: '', time: 2.5 };
+  return idle(tr(`Field is flooded. Ready in ${4 - P.stage} day(s)`, `పొలంలో నీళ్ళు ఉన్నాయి. ${4 - P.stage} రోజుల్లో పంట`));
 }
 function plantCrop(k) {
   const empty = S.farm.filter(p => p.stage < 0).slice(0, S.seeds[k]);
@@ -1643,6 +1669,17 @@ const spots = [
   { at: DUCK_SPOT, r: 2.4, hidden: () => !S.animals.ducks, label: () => tr('Collect duck eggs', 'బాతు గుడ్లు ఏరు'),
     need: () => S.animals.duckDay === S.day ? tr('Already collected today', 'ఈ రోజు ఏరారు') : '', time: 1.2, start: SFX.cluck,
     done: () => { S.animals.duckDay = S.day; S.inv.egg += 2; renderInventory('egg'); toast(tr('🦆 2 duck eggs!', '🦆 2 బాతు గుడ్లు!'), 'good'); } },
+  { at: PADDY_SPOT, r: 3.2, label: () => paddyAction().label, need: () => paddyAction().need,
+    get time() { return paddyAction().time; },
+    start: () => { const a = paddyAction().id; if (a === 'water') SFX.water(); if (a === 'cut') SFX.chop(); },
+    tick: () => { if (paddyAction().id === 'cut') SFX.chop(); },
+    done: () => {
+      const a = paddyAction().id, P = S.paddy;
+      if (a === 'cut') { P.stage = -1; P.watered = false; S.inv.ricebag += 6; S.inv.fodder += 6; SFX.good(); toast(tr('🍚 6 bags of rice and 🌾 6 bundles of straw for the animals!', '🍚 6 బస్తాల బియ్యం, 🌾 పశువులకు 6 గడ్డి కట్టలు!'), 'good'); }
+      else if (a === 'plant') { S.inv.sapling--; P.stage = 0; P.watered = wet > 0.5; toast(tr('🌱 Saplings planted! Keep the field flooded every day.', '🌱 నాట్లు వేశారు! రోజూ పొలంలో నీళ్ళు ఉంచండి.'), 'good'); }
+      else if (a === 'water') { P.watered = true; toast(tr('💧 The field is flooded. The paddy will grow tonight.', '💧 పొలంలో నీళ్ళు నిండాయి. రాత్రికి వరి పెరుగుతుంది.'), 'good'); }
+      renderPaddy(); renderInventory();
+    } },
   { at: FISH_SPOT, r: 2.6, label: () => tr('Go fishing', 'చేపలు పట్టు'),
     need: () => !S.inv.rod ? tr('Buy a fishing rod at the shop', 'షాప్‌లో గాలం కొనండి')
       : (S.fishing.day === S.day && S.fishing.n >= 6) ? tr('The fish are resting. Come back tomorrow', 'చేపలు విశ్రాంతి తీసుకుంటున్నాయి. రేపు రండి') : '',
@@ -1771,6 +1808,9 @@ function sleep() {
   eggMeshes.forEach(m => { m.visible = true; });
   // Watered plants grow one stage overnight
   S.farm.forEach(p => { if (p.watered && isGrowing(p)) p.stage++; p.watered = false; });
+  if (S.paddy.watered && S.paddy.stage >= 0 && S.paddy.stage < 4) S.paddy.stage++;
+  S.paddy.watered = false;
+  renderPaddy();
   renderFarm();
   // Finished quests come back the next day; unfinished ones wait
   for (const k in S.quests) if (S.quests[k] === 'done') S.quests[k] = 'new';
@@ -1960,9 +2000,10 @@ function updateWeather(dt) {
     if (soilWet) {
       let n = 0;
       S.farm.forEach(p => { if (isGrowing(p) && !p.watered) { p.watered = true; n++; } });
+      if (S.paddy.stage >= 0 && S.paddy.stage < 4) S.paddy.watered = true;
       if (n) { completeTask('farm'); toast(tr('🌱 The rain watered your crops!', '🌱 వర్షం మీ మొక్కలకు నీళ్ళు పోసింది!'), 'good'); }
     }
-    renderFarm();
+    renderFarm(); renderPaddy();
   }
   flash = Math.max(0, flash - dt * 2);
   if (raining && S.weather.storm && wet > 0.7) {
@@ -2069,6 +2110,7 @@ hydrateIcons();
 S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
 camera.add(rod, bat);
 renderFarm();
+renderPaddy();
 placeBall();
 applyDay();
 applyHome();
@@ -2104,7 +2146,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get sparks() { return sparks.length; },
     get mini() { return mini ? mini.phase : null; },
     get miniState() { return mini ? { phase: mini.phase, t: mini.t, T: mini.T, ball: mini.ball, runs: mini.runs, swung: mini.swung } : null; },
-    refresh() { spawnAnimals(); renderFarm(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
+    refresh() { spawnAnimals(); renderFarm(); renderPaddy(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
 }
