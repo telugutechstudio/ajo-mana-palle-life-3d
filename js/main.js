@@ -1577,6 +1577,44 @@ function checkAchievements() {
     }
   }
 }
+// Backup code: the save, gzipped and base64-encoded, to move progress to another phone
+const B64 = { enc: u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), dec: t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)) };
+async function gz(bytes, mode) {
+  const stream = new Blob([bytes]).stream().pipeThrough(mode === 'in' ? new CompressionStream('gzip') : new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function makeBackup() { save(); return 'MP1-' + B64.enc(await gz(new TextEncoder().encode(JSON.stringify(S)), 'in')); }
+async function readBackup(code) {
+  const m = code.trim().match(/^MP1-([A-Za-z0-9_-]+)$/);
+  if (!m) throw new Error('bad');
+  const data = JSON.parse(new TextDecoder().decode(await gz(B64.dec(m[1]), 'out')));
+  if (typeof data.day !== 'number' || !data.inv) throw new Error('bad');
+  return data;
+}
+let menuBox = '', restoreData = null;
+function showMenuBox(kind) {
+  const box = $('achBox');
+  if (menuBox === kind && !box.classList.contains('hidden')) { box.classList.add('hidden'); menuBox = ''; return; }
+  menuBox = kind; box.classList.remove('hidden');
+  requestAnimationFrame(() => box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  if (kind === 'ach') { renderAchievements(); return; }
+  if (kind === 'backup') {
+    box.innerHTML = `<h3>💾 ${tr('Backup code', 'బ్యాకప్ కోడ్')}</h3><p class="ach-stats">${tr('Copy this code and keep it safe. Paste it in Restore on any phone to continue from here.', 'ఈ కోడ్ కాపీ చేసి దాచుకోండి. ఏ ఫోన్‌లోనైనా రీస్టోర్‌లో పేస్ట్ చేస్తే ఇక్కడి నుంచే కొనసాగుతుంది.')}</p><textarea id="codeBox" readonly></textarea><button class="small-btn" data-act="copyCode">📋 ${tr('Copy', 'కాపీ')}</button>`;
+    makeBackup().then(c => { $('codeBox').value = c; }).catch(() => { $('codeBox').value = tr('Backup is not supported in this browser.', 'ఈ బ్రౌజర్‌లో బ్యాకప్ పని చేయదు.'); });
+  }
+  if (kind === 'restore') {
+    restoreData = null;
+    box.innerHTML = `<h3>📥 ${tr('Restore from a code', 'కోడ్ నుంచి రీస్టోర్')}</h3><textarea id="codeBox" placeholder="MP1-…"></textarea><button class="small-btn" data-act="restoreCode">${tr('Check code', 'కోడ్ చెక్ చేయి')}</button><p class="ach-stats" id="restoreMsg"></p>`;
+  }
+}
+async function restoreStep(btn) {
+  if (restoreData) { resetting = true; localStorage.setItem(SAVE_KEY, JSON.stringify(restoreData)); location.reload(); return; }
+  try {
+    restoreData = await readBackup($('codeBox').value);
+    $('restoreMsg').textContent = tr(`Found: day ${restoreData.day}, ₹${Math.floor(restoreData.money)}. This replaces your current game.`, `దొరికింది: రోజు ${restoreData.day}, ₹${Math.floor(restoreData.money)}. ఇప్పటి గేమ్ పోతుంది.`);
+    btn.textContent = tr('Tap to restore', 'రీస్టోర్ చేయడానికి నొక్కండి');
+  } catch (e) { $('restoreMsg').textContent = tr('That code does not look right.', 'ఈ కోడ్ సరిగా లేదు.'); }
+}
 function renderAchievements() {
   const got = ACHIEVEMENTS.filter(a => S.ach[a.id]).length;
   $('achBox').innerHTML = `<h3>🏆 ${tr('Achievements', 'అచీవ్‌మెంట్లు')} ${got}/${ACHIEVEMENTS.length}</h3>` +
@@ -2279,7 +2317,11 @@ document.addEventListener('click', e => {
     case 'lang': S.lang = el.dataset.id; renderMenu(); renderTasks(); renderHud(); save(); break;
     case 'sound': S.sound = !S.sound; renderMenu(); save(); break;
     case 'gfx': S.gfx = lowGfx() ? 'high' : 'low'; applyGfx(); renderMenu(); save(); break;
-    case 'ach': renderAchievements(); $('achBox').classList.toggle('hidden'); break;
+    case 'ach': showMenuBox('ach'); break;
+    case 'backup': showMenuBox('backup'); break;
+    case 'restore': showMenuBox('restore'); break;
+    case 'copyCode': { const c = $('codeBox').value; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(() => { el.textContent = '✅ ' + tr('Copied', 'కాపీ అయింది'); }).catch(() => { $('codeBox').select(); }); break; }
+    case 'restoreCode': restoreStep(el); break;
     case 'reset':
       if (confirmReset) { resetting = true; localStorage.removeItem(SAVE_KEY); location.reload(); }
       else { confirmReset = true; el.textContent = tr('Tap again to erase', 'తొలగించడానికి మళ్ళీ నొక్కండి'); }
@@ -2299,7 +2341,9 @@ function renderMenu() {
   $('resetBtn').textContent = '🗑️ ' + tr('New game', 'కొత్త గేమ్');
   $('achBtn').textContent = '🏆 ' + tr('Achievements', 'అచీవ్‌మెంట్లు');
   $('gfxBtn').textContent = (lowGfx() ? '🔋 ' : '✨ ') + tr(`Graphics: ${lowGfx() ? 'Low (saves battery)' : 'High'}`, `గ్రాఫిక్స్: ${lowGfx() ? 'తక్కువ (బ్యాటరీ ఆదా)' : 'ఎక్కువ'}`);
-  $('achBox').classList.add('hidden');
+  $('achBox').classList.add('hidden'); menuBox = '';
+  $('backupBtn').textContent = '💾 ' + tr('Backup', 'బ్యాకప్');
+  $('restoreBtn').textContent = '📥 ' + tr('Restore', 'రీస్టోర్');
   confirmReset = false;
   $('controlsHelp').innerHTML = IS_TOUCH
     ? tr('<b>Left side</b>: move · <b>Right side</b>: look around · <b>Yellow button</b>: do the task', '<b>ఎడమ వైపు</b>: నడవండి · <b>కుడి వైపు</b>: చుట్టూ చూడండి · <b>పసుపు బటన్</b>: పని చేయండి')
@@ -2523,6 +2567,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get sparks() { return sparks.length; },
     get mini() { return mini ? mini.phase : null; },
     checkAch: checkAchievements,
+    makeBackup, readBackup,
     get lowGfx() { return lowGfx(); },
     get santaOn() { return santa.g.visible; },
     get santaSpots() { const o = {}; for (const [k, v] of Object.entries(santa.spots)) o[k] = [v.x, v.z, SANTA.x, SANTA.z]; o.wheel = [WHEEL_SPOT.x, WHEEL_SPOT.z + 0.5, WHEEL.x, WHEEL.z]; return o; },
