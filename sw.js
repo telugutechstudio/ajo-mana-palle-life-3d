@@ -1,6 +1,6 @@
 // Service worker: lets Mana Palle Life 3D install as an app and run offline.
 // Game files are network-first so updates show up right away; the cache is the offline fallback.
-const CACHE = 'mana-palle-v1';
+const CACHE = 'mana-palle-v2';
 const ASSETS = ['./', 'index.html', 'css/style.css', 'js/main.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
