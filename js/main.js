@@ -29,6 +29,7 @@ function defaultState() {
     inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ricebag: 0, sapling: 0, letter: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    storyDay: 0, storiesHeard: 0,
     story: { step: 0, litter: [false, false, false, false, false] }, // the sarpanch's village development story
     post: { day: 0, to: null, done: false },
     teachDay: 0,
@@ -724,10 +725,70 @@ const TEA_STALL = new THREE.Vector3(9.2, 0, -11.4), TEA_SPOT = new THREE.Vector3
   for (let i = 0; i < 4; i++) mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 8), 0xe8f4ff, TEA_STALL.x + 0.1 + i * 0.14, 1.0, TEA_STALL.z + 0.1, scene, { transparent: true, opacity: 0.8 });
   colliders.push({ x: TEA_STALL.x, z: TEA_STALL.z, r: 1.0 });
 }
+// Evening bonfire (mantalu) near the rachabanda: villagers gather 7–10 PM
+const BONFIRE = new THREE.Vector3(11.6, 0, -3.8);
+const bonfire = { flames: [], light: new THREE.PointLight(0xff8a30, 0, 16, 1.4) };
+{
+  for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; mesh(new THREE.DodecahedronGeometry(0.16, 0), 0x8a857a, BONFIRE.x + Math.cos(a) * 0.65, 0.1, BONFIRE.z + Math.sin(a) * 0.65); }
+  for (let i = 0; i < 4; i++) { const l = mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 6), 0x5a3418, BONFIRE.x, 0.15, BONFIRE.z); l.rotation.z = Math.PI / 2; l.rotation.y = i * Math.PI / 4; }
+  for (const [c, sc, x, z] of [[0xff6a1a, 1, 0, 0], [0xffb02a, 0.7, 0.12, 0.05], [0xffe07a, 0.45, -0.08, -0.06]]) {
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.3 * sc, 0.9 * sc, 7), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.9 }));
+    fl.position.set(BONFIRE.x + x, 0.2 + 0.45 * sc, BONFIRE.z + z); scene.add(fl); bonfire.flames.push(fl);
+  }
+  bonfire.light.position.set(BONFIRE.x, 1.2, BONFIRE.z); scene.add(bonfire.light);
+  colliders.push({ x: BONFIRE.x, z: BONFIRE.z, r: 0.8 });
+}
+const SEATS = { ram: [-1.6, 0.6], ven: [1.5, 0.9], lak: [0.4, -1.7], chai: [-1.1, -1.4] };
+const isGathering = () => { const h = S.time / 60; return h >= 19 && h < 22; };
+function updateBonfire(dt) {
+  const on = isGathering();
+  bonfire.light.intensity = on ? 2.2 + Math.random() * 0.8 : 0;
+  bonfire.flames.forEach((fl, i) => { fl.visible = on; fl.scale.y = 0.8 + Math.random() * 0.5; fl.rotation.y += dt * (i + 1); });
+  if (on && Math.random() < dt * 4) puff(BONFIRE.x, 1.1, BONFIRE.z, 0x777777);
+}
+// Fireflies over the pond, the paddy field and the farm at night
+const FLY_N = 70;
+const flyPos = new Float32Array(FLY_N * 3), flyHome = [];
+for (let i = 0; i < FLY_N; i++) {
+  const [cx, cz, r] = [[-24, -4, 6], [-22, -18, 8], [-9.5, 10.5, 4]][i % 3];
+  const p = new THREE.Vector3(cx + rand(-r, r), rand(0.4, 1.8), cz + rand(-r, r)); flyHome.push(p); flyPos.set([p.x, p.y, p.z], i * 3);
+}
+const fliesGeo = new THREE.BufferGeometry(); fliesGeo.setAttribute('position', new THREE.BufferAttribute(flyPos, 3));
+const flies = new THREE.Points(fliesGeo, new THREE.PointsMaterial({ color: 0xd8ff6a, size: 0.22, map: null, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+flies.visible = false; scene.add(flies);
+function updateFlies() {
+  const h = S.time / 60, t = performance.now() / 1000;
+  flies.visible = (h > 19 || h < 5) && wet < 0.4;
+  if (!flies.visible) return;
+  if (!flies.material.map) { flies.material.map = sparkTex; flies.material.needsUpdate = true; }
+  for (let i = 0; i < FLY_N; i++) {
+    const p = flyHome[i];
+    flyPos[i * 3] = p.x + Math.sin(t * 0.5 + i) * 0.8; flyPos[i * 3 + 1] = p.y + Math.sin(t * 0.9 + i * 2) * 0.3; flyPos[i * 3 + 2] = p.z + Math.cos(t * 0.4 + i) * 0.8;
+  }
+  fliesGeo.attributes.position.needsUpdate = true;
+  flies.material.opacity = 0.55 + Math.sin(t * 3) * 0.35;
+}
+// Stories Ramayya tells by the fire
+const STORIES = [
+  ['The clever rabbit', 'తెలివైన కుందేలు', 'A lion ate one animal every day. A small rabbit told him another lion lived in the well. The proud lion jumped at his own reflection and never came back. Brains beat strength!', 'ఒక సింహం రోజూ ఒక జంతువును తినేది. ఒక చిన్న కుందేలు బావిలో ఇంకో సింహం ఉందని చెప్పింది. గర్వంతో సింహం తన నీడ మీదకే దూకింది. బలం కన్నా బుద్ధి గొప్ప!'],
+  ['The monkey and the crocodile', 'కోతి – మొసలి', 'A crocodile wanted the monkey’s heart. Halfway across the river the monkey said, "I left my heart on the tree!" Back on the bank, he climbed up and was safe. Think fast in trouble!', 'మొసలి కోతి గుండె కావాలనుకుంది. నది మధ్యలో కోతి "నా గుండె చెట్టు మీదే వదిలేశా!" అంది. ఒడ్డుకు రాగానే చెట్టెక్కి బతికిపోయింది. ఆపదలో తెలివిగా ఆలోచించాలి!'],
+  ['The thirsty crow', 'దాహం వేసిన కాకి', 'A thirsty crow found a pot with a little water at the bottom. It dropped pebbles in one by one until the water rose. Patience finds a way.', 'దాహంతో ఉన్న కాకికి అడుగున కొంచెం నీళ్ళున్న కుండ కనిపించింది. ఒక్కో రాయి వేసి నీళ్ళు పైకి తెచ్చుకుంది. ఓపిక ఉంటే దారి దొరుకుతుంది.'],
+  ['Tenali Rama and the thieves', 'తెనాలి రామ – దొంగలు', 'Tenali Rama saw thieves hiding near his house. He loudly told his wife the gold was in the well. The thieves drew water all night, and his garden got watered for free!', 'ఇంటి దగ్గర దొంగలు దాక్కోవడం తెనాలి రామ చూశాడు. బంగారం బావిలో వేశామని గట్టిగా భార్యతో అన్నాడు. దొంగలు రాత్రంతా నీళ్ళు తోడారు, తోటకి ఉచితంగా నీళ్ళు!'],
+  ['The four friends', 'నలుగురు స్నేహితులు', 'A crow, a mouse, a tortoise and a deer were friends. When the deer was caught in a net, the mouse chewed it open. Together, small friends beat a big hunter.', 'కాకి, ఎలుక, తాబేలు, జింక స్నేహితులు. జింక వలలో చిక్కితే ఎలుక వల కొరికి విడిపించింది. కలిసి ఉంటే చిన్నవాళ్ళూ పెద్ద వేటగాణ్ణి ఓడిస్తారు.'],
+  ['The golden goose', 'బంగారు గుడ్ల బాతు', 'A farmer’s goose laid one golden egg a day. Greedy for more, he cut it open and found nothing. Be happy with steady blessings.', 'ఒక రైతు బాతు రోజూ ఒక బంగారు గుడ్డు పెట్టేది. అత్యాశతో దాన్ని కోస్తే ఏమీ దొరకలేదు. రోజూ వచ్చే దీవెనలతో సంతోషంగా ఉండాలి.'],
+];
 function updateVillagers(dt) {
-  const h = S.time / 60, awake = h >= 6 && h < 20.5;
+  const h = S.time / 60, awake = h >= 6 && h < 20.5, gathering = isGathering();
   for (const v of villagers) {
     if (v.override) { v.g.visible = true; continue; }
+    if (gathering && SEATS[v.id]) {
+      const [sx, sz] = SEATS[v.id];
+      v.g.visible = true; v.g.position.set(BONFIRE.x + sx, 0, BONFIRE.z + sz);
+      v.g.rotation.y = Math.atan2(-sx, -sz); v.legs.forEach(l => { l.rotation.x = 0; });
+      const d = Math.hypot(player.position.x - v.g.position.x, player.position.z - v.g.position.z);
+      v.near = d < 3.2; v.tag.visible = d > 2.4 && d < 16;
+      continue;
+    }
     v.g.visible = awake;
     if (!awake) continue;
     const dx = player.position.x - v.g.position.x, dz = player.position.z - v.g.position.z;
@@ -1348,7 +1409,12 @@ function ambient(dt) {
   ambientAcc = rand(1.5, 4);
   const h = S.time / 60;
   if (h > 6 && h < 18.5) { const f = rand(2200, 3400); tone(f, 0.08, 'sine', 0.02, 1.3); setTimeout(() => tone(f * 1.1, 0.06, 'sine', 0.015, 1.2), 120); }
-  else for (let i = 0; i < 3; i++) setTimeout(() => tone(4200, 0.03, 'square', 0.006), i * 60);
+  else {
+    for (let i = 0; i < 3; i++) setTimeout(() => tone(4200, 0.03, 'square', 0.006), i * 60);
+    const r = Math.random();
+    if (r < 0.15) { tone(420, 0.35, 'sine', 0.03, 0.85); setTimeout(() => tone(380, 0.5, 'sine', 0.03, 0.8), 450); } // owl
+    else if (r < 0.45 && Math.hypot(player.position.x - POND.x, player.position.z - POND.z) < 16) for (let i = 0; i < 2; i++) setTimeout(() => tone(140, 0.12, 'square', 0.02, 1.4), i * 180); // frogs
+  }
 }
 
 /* ============================== UI ==================================== */
@@ -1817,6 +1883,13 @@ const spots = [
   { at: TEA_SPOT, r: 2.2, label: () => tr('Tea stall', 'టీ కొట్టు'), need: () => '', time: 0.2, done: () => openTalk(villagers.find(v => v.id === 'chai')) },
   ...LITTER.map((at, i) => ({ at, r: 1.8, hidden: () => !upgrades.litter[i].visible, label: () => tr('Clean up the litter', 'చెత్త ఎత్తు'), need: () => '', time: 2, start: SFX.chop,
     done: () => { S.story.litter[i] = true; applyStory(); const left = S.story.litter.filter(x => !x).length; toast(left ? tr(`🧹 Clean! ${left} more to go`, `🧹 శుభ్రం! ఇంకా ${left}`) : tr('🧹 All clean! Go tell the sarpanch.', '🧹 అంతా శుభ్రం! సర్పంచ్ గారికి చెప్పండి.'), 'good'); } })),
+  { at: BONFIRE, r: 3.4, hidden: () => !isGathering(), label: () => tr('Listen to Ramayya\'s story', 'రామయ్య తాత కథ విను'),
+    need: () => S.storyDay === S.day ? tr('Tomorrow, another story!', 'రేపు ఇంకో కథ!') : '', time: 0.4,
+    done: () => {
+      const st = STORIES[S.storiesHeard % STORIES.length];
+      S.storyDay = S.day; S.storiesHeard++; S.energy = Math.min(100, S.energy + 10); SFX.good();
+      openPanel({ icon: 'oldman', title: '🔥 ' + tr(st[0], st[1]), text: tr(st[2], st[3]) + '<br><br>' + tr('(Energy +10 by the warm fire)', '(వెచ్చని మంట దగ్గర శక్తి +10)') });
+    } },
   { at: BALL_AT, r: 1.8, hidden: () => !ballMesh.visible, label: () => tr('Pick up the ball', 'బంతి తీసుకో'), need: () => '', time: 0.4,
     done: () => { S.inv.ball = 1; ballMesh.visible = false; SFX.good(); renderInventory('ball'); toast(tr('⚽ Found it! Take it to Chintu.', '⚽ దొరికింది! చింటుకి ఇవ్వండి.'), 'good'); } },
   ...villagers.map(v => ({ at: v.g.position, r: 2.6, hidden: () => !v.g.visible, label: () => tr(`Talk to ${v.names[1]}`, `${v.names[0]}తో మాట్లాడు`),
@@ -2226,6 +2299,8 @@ function frame() {
   cart.tails.forEach((t, i) => { t.rotation.z = Math.sin(performance.now() / 500 + i) * 0.25; });
   updateFestivals(dt);
   updateHome(dt);
+  updateBonfire(dt);
+  updateFlies();
   if (upgrades.lamps.visible) { const hh = S.time / 60, on = hh > 18.3 || hh < 5.8; lampHead.color.set(on ? 0xfff2b0 : 0x555544); streetLight.intensity = on ? 1.5 : 0; }
   updateAnimals(dt);
   updateWeather(dt);
