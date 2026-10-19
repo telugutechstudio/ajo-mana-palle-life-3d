@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Mana Palle Life 3D – Indian Village Life Game | మన పల్లె లైఫ్ 3D</title>
+  <meta name="description" content="Live a day in an Indian village in 3D: fetch water from the well, make chai on the chulha, collect eggs, milk the cow and sell at the kirana shop. Telugu & English.">
+  <meta name="theme-color" content="#2b5d2b">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+Tammudu+2:wght@500;600;700&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="world"></canvas>
+
+<!-- Heads-up display -->
+<div id="hud" class="hidden">
+  <div class="hud-top">
+    <div class="pill" id="clock"></div>
+    <div class="pill energy"><span data-ico="energy"></span><div class="bar"><div id="energyFill"></div></div></div>
+    <div class="pill" id="money"></div>
+  </div>
+  <div class="inventory" id="inventory"></div>
+  <button class="tasks-btn" id="tasksBtn" data-act="tasks"><span data-ico="tasks"></span></button>
+  <div class="tasks" id="tasks"></div>
+  <div class="crosshair"></div>
+  <div class="prompt hidden" id="prompt"></div>
+  <div class="progress hidden" id="progress"><div class="progress-label" id="progressLabel"></div><div class="bar"><div id="progressFill"></div></div></div>
+  <button class="menu-btn" data-act="menu"><span data-ico="gear"></span></button>
+</div>
+
+<!-- Phone controls -->
+<div id="touch" class="hidden">
+  <div class="joy" id="joy"><div class="joy-knob" id="joyKnob"></div></div>
+  <button class="act-btn hidden" id="actBtn" data-act="interact"></button>
+  <button class="run-btn" id="runBtn" data-act="run">🏃</button>
+</div>
+
+<div id="toasts"></div>
+
+<!-- Start / pause screen -->
+<div id="menu" class="menu">
+  <div class="menu-card">
+    <div class="logo"><span data-ico="hut"></span><span data-ico="rice"></span><span data-ico="chicken"></span></div>
+    <h1>మన పల్లె లైఫ్ <b>3D</b></h1>
+    <h2>Mana Palle Life 3D</h2>
+    <p id="menuText"></p>
+    <div class="lang"><button data-act="lang" data-id="te">తెలుగు</button><button data-act="lang" data-id="en">English</button></div>
+    <button class="big-btn" id="playBtn" data-act="play"></button>
+    <div class="menu-row">
+      <button class="small-btn" id="soundBtn" data-act="sound"></button>
+      <button class="small-btn" id="resetBtn" data-act="reset"></button>
+    </div>
+    <div class="controls" id="controlsHelp"></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
