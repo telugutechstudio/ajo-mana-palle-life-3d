@@ -1722,7 +1722,8 @@ function openShop() {
 }
 
 // Home panel: sleep, watch TV, upgrade the house, buy furniture
-function canSleep() { return S.time >= 19 * 60 || S.energy <= 20; }
+function canSleep() { return S.time >= 19 * 60 || S.energy <= 20 || todayTasks().every(([t]) => S.done[t]); }
+let timeSpeed = 1; // the ⏩ button makes village time pass 3x faster
 function openHome() {
   const H = S.home, L = HOME_LEVELS[H.level], next = HOME_LEVELS[H.level + 1], h = S.time / 60;
   const perks = [L.perk, ...FURNITURE.filter(f => H[f.id]).map(f => f.perk)].filter(Boolean).map(p => '• ' + tr(...p));
@@ -1730,6 +1731,8 @@ function openHome() {
     { label: canSleep() ? tr('🛏️ Sleep', '🛏️ నిద్రపో') : tr('🛏️ Sleep (after 7 PM or when tired)', '🛏️ నిద్ర (రాత్రి 7 తర్వాత / అలసినప్పుడు)'), disabled: !canSleep(),
       fn: () => { closePanel(); busy = { s: { label: () => tr('Sleep', 'నిద్రపో'), time: 1.2, done: sleep }, t: 0, total: 1.2, tickAcc: 0 }; $('progressLabel').textContent = tr('Sleeping…', 'నిద్ర…'); $('progress').classList.remove('hidden'); } },
   ];
+  if (S.time < 19 * 60) options.push({ label: tr('😴 Rest at home until 7 PM (energy +20)', '😴 సాయంత్రం 7 వరకు ఇంట్లో విశ్రాంతి (శక్తి +20)'),
+    fn: () => { closePanel(); S.time = 19 * 60; S.energy = Math.min(100, S.energy + 20); fade(); SFX.good(); renderHud(); toast(tr('😴 You rested. Good evening!', '😴 విశ్రాంతి తీసుకున్నారు. శుభ సాయంత్రం!'), 'good'); save(); } });
   if (H.tv) options.push({ label: H.tvDay === S.day ? tr('📺 Already watched TV today', '📺 ఈ రోజు టీవీ చూశారు') : h < 17 ? tr('📺 TV shows start at 5 PM', '📺 టీవీ సాయంత్రం 5 నుంచి') : tr('📺 Watch TV (energy +20)', '📺 టీవీ చూడు (శక్తి +20)'),
     disabled: H.tvDay === S.day || h < 17,
     fn: () => { H.tvDay = S.day; S.energy = Math.min(100, S.energy + 20); S.time += 30; tvGlow = 6; SFX.good(); toast(tr('📺 A fun Telugu movie song! Energy +20', '📺 సరదా తెలుగు సినిమా పాట! శక్తి +20'), 'good'); openHome(); } });
@@ -2253,6 +2256,7 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'KeyE' && playing) interact();
   if (e.code === 'KeyT' && playing) { tasksOpen = !tasksOpen; renderTasks(); }
+  if (e.code === 'KeyF' && playing) $('speedBtn').click();
   if (e.code === 'Escape' && playing && !document.pointerLockElement) openMenu();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -2314,6 +2318,7 @@ document.addEventListener('click', e => {
     case 'pick': pickOption(Number(el.dataset.id)); break;
     case 'run': running = !running; el.classList.toggle('on', running); break;
     case 'tasks': tasksOpen = !tasksOpen; renderTasks(); break;
+    case 'speed': timeSpeed = timeSpeed === 1 ? 3 : 1; el.classList.toggle('on', timeSpeed > 1); el.textContent = timeSpeed > 1 ? '⏩×3' : '⏩'; toast(timeSpeed > 1 ? tr('⏩ Time runs 3x faster', '⏩ సమయం 3 రెట్లు వేగంగా') : tr('▶ Normal time', '▶ సాధారణ సమయం')); break;
     case 'lang': S.lang = el.dataset.id; renderMenu(); renderTasks(); renderHud(); save(); break;
     case 'sound': S.sound = !S.sound; renderMenu(); save(); break;
     case 'gfx': S.gfx = lowGfx() ? 'high' : 'low'; applyGfx(); renderMenu(); save(); break;
@@ -2347,8 +2352,8 @@ function renderMenu() {
   confirmReset = false;
   $('controlsHelp').innerHTML = IS_TOUCH
     ? tr('<b>Left side</b>: move · <b>Right side</b>: look around · <b>Yellow button</b>: do the task', '<b>ఎడమ వైపు</b>: నడవండి · <b>కుడి వైపు</b>: చుట్టూ చూడండి · <b>పసుపు బటన్</b>: పని చేయండి')
-    : tr('<b>W A S D</b>: walk · <b>Mouse</b>: look · <b>Shift</b>: run · <b>E</b>: do the task · <b>T</b>: chores list · <b>Esc</b>: menu',
-      '<b>W A S D</b>: నడవండి · <b>మౌస్</b>: చూడండి · <b>Shift</b>: పరుగు · <b>E</b>: పని · <b>T</b>: పనుల లిస్ట్ · <b>Esc</b>: మెనూ');
+    : tr('<b>W A S D</b>: walk · <b>Mouse</b>: look · <b>Shift</b>: run · <b>E</b>: do the task · <b>T</b>: chores list · <b>F</b>: fast time · <b>Esc</b>: menu',
+      '<b>W A S D</b>: నడవండి · <b>మౌస్</b>: చూడండి · <b>Shift</b>: పరుగు · <b>E</b>: పని · <b>T</b>: పనుల లిస్ట్ · <b>F</b>: వేగంగా సమయం · <b>Esc</b>: మెనూ');
 }
 function openMenu() {
   playing = false;
@@ -2453,7 +2458,7 @@ function frame() {
     }
     if (!riding) camera.position.y = 1.62 + Math.sin(bob) * 0.035;
     // Game time: 1 real second = 1 village minute
-    S.time += dt;
+    S.time += dt * timeSpeed;
     if (S.time >= 24 * 60) { S.time = 23.99 * 60; }
     if (S.time > 23 * 60 && !busy) { toast(tr('Too late! You fell asleep…', 'చాలా లేట్ అయింది! నిద్ర వచ్చేసింది…')); sleep(); }
     updateBusy(dt);
@@ -2569,6 +2574,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     checkAch: checkAchievements,
     makeBackup, readBackup,
     get lowGfx() { return lowGfx(); },
+    get timeSpeed() { return timeSpeed; },
     get santaOn() { return santa.g.visible; },
     get santaSpots() { const o = {}; for (const [k, v] of Object.entries(santa.spots)) o[k] = [v.x, v.z, SANTA.x, SANTA.z]; o.wheel = [WHEEL_SPOT.x, WHEEL_SPOT.z + 0.5, WHEEL.x, WHEEL.z]; return o; },
     get miniState() { return mini ? { phase: mini.phase, t: mini.t, T: mini.T, ball: mini.ball, runs: mini.runs, swung: mini.swung } : null; },
