@@ -13,7 +13,7 @@ const EMOJI = { water: '💧', wood: '🪵', egg: '🥚', milk: '🥛', cow: '�
   sun: '☀️', moon: '🌙', chicken: '🐔', home: '🏡', shop: '🛒', check: '✅', fire: '🔥', tea: '🌿', leaf: '🍃', speaker: '🔊', rice: '🌾',
   hut: '🛖', tasks: '📋', gear: '⚙️', speech: '💬', bucket: '🪣', axe: '🪓', party: '🎉', pray: '🙏',
   rain: '🌧️', storm: '⛈️', veg: '🍅', seed: '🌱', ball: '⚽', basket: '🧺', umbrella: '☔', oldman: '👴', woman: '👩', boy: '👦', farmer: '🧑‍🌾',
-  brinjal: '🍆', chilli: '🌶️', corn: '🌽', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
+  brinjal: '🍆', chilli: '🌶️', corn: '🌽', goat: '🐐', buffalo: '🐃', duck: '🦆', gmilk: '🐐', fodder: '🌾', fish: '🐟', bigfish: '🐠', rod: '🎣', cricket: '🏏', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
 function ico(key, cls = '') {
   return `<span class="i3d ${cls}" data-e="${EMOJI[key] || '❔'}"><img src="icons/${key}.webp" alt="" draggable="false" onerror="this.parentNode.classList.add('fail')"></span>`;
 }
@@ -26,9 +26,10 @@ function defaultState() {
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
-    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
+    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    animals: { goat: 0, buffalo: 0, ducks: 0, fedDay: 0, goatDay: 0, buffaloDay: 0, duckDay: 0 },
     home: { level: 0, fan: false, radio: false, tv: false, tvDay: 0 },
     stove: { state: 'empty', until: 0 }, // empty | cooking | ready
     eggsLeft: [true, true, true],
@@ -50,6 +51,7 @@ function load() {
       s.inv = Object.assign(d.inv, s.inv); // older saves miss the newer items
       s.quests = Object.assign(d.quests, s.quests);
       s.home = Object.assign(d.home, s.home);
+      s.animals = Object.assign(d.animals, s.animals);
       if (!JSON.parse(raw).seeds) s.seeds.tomato = s.inv.seed || 0; // seeds used to be one item
       s.inv.seed = 0;
       s.farm.forEach(p => { p.crop = p.crop || 'tomato'; });
@@ -924,6 +926,97 @@ function updateFestivals(dt) {
   updateFireworks(dt);
 }
 
+// Village pond (cheruvu) with reeds and lily pads
+const POND = new THREE.Vector3(-24, 0, -4), POND_R = 3.8;
+{
+  mesh(new THREE.CircleGeometry(POND_R + 0.7, 28), 0x7a5a3a, POND.x, 0.035, POND.z).rotation.x = -Math.PI / 2;
+  const w = mesh(new THREE.CircleGeometry(POND_R, 28), new THREE.MeshLambertMaterial({ color: 0x3a7aa0, transparent: true, opacity: 0.9 }), POND.x, 0.06, POND.z);
+  w.rotation.x = -Math.PI / 2; w.castShadow = false;
+  for (let i = 0; i < 14; i++) {
+    const a = rand(0, 6.28), r = POND_R + rand(-0.2, 0.4);
+    mesh(new THREE.ConeGeometry(0.05, rand(0.6, 1.1), 4), 0x4f8f2a, POND.x + Math.cos(a) * r, 0.4, POND.z + Math.sin(a) * r).castShadow = false;
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = rand(0, 6.28), r = rand(0.8, 2.8);
+    const p = mesh(new THREE.CircleGeometry(0.28, 10), 0x3f9a3a, POND.x + Math.cos(a) * r, 0.07, POND.z + Math.sin(a) * r); p.rotation.x = -Math.PI / 2; p.castShadow = false;
+  }
+  colliders.push({ x: POND.x, z: POND.z, r: POND_R - 0.2 });
+}
+const DUCK_SPOT = new THREE.Vector3(POND.x, 0, POND.z + POND_R + 0.9);
+
+// Animal pen (pashuvula dodi) with a feeding trough
+const PEN = new THREE.Vector3(22, 0, 22), PEN_GATE = new THREE.Vector3(22, 0, 17.6);
+const trough = { hay: null };
+{
+  const h = 3.5;
+  for (let i = -h; i <= h; i += 1) for (const [x, z] of [[i, -h], [i, h], [-h, i], [h, i]]) {
+    if (z === -h && Math.abs(x) < 1.1) continue; // gate gap
+    box(0.12, 1, 0.12, 0x8a6a3a, PEN.x + x, 0.5, PEN.z + z).castShadow = false;
+    colliders.push({ x: PEN.x + x, z: PEN.z + z, r: 0.3 });
+  }
+  for (const [w, d, x, z] of [[2.5, 0.06, -2.25, -h], [2.5, 0.06, 2.25, -h], [7, 0.06, 0, h], [0.06, 7, -h, 0], [0.06, 7, h, 0]]) {
+    box(w, 0.08, d, 0x9a7a4a, PEN.x + x, 0.75, PEN.z + z).castShadow = false;
+    box(w, 0.08, d, 0x9a7a4a, PEN.x + x, 0.4, PEN.z + z).castShadow = false;
+  }
+  box(1.8, 0.4, 0.6, 0x6b4426, PEN.x - 2, 0.2, PEN.z + 2.6);
+  trough.hay = box(1.6, 0.12, 0.45, 0xd8c060, PEN.x - 2, 0.42, PEN.z + 2.6);
+  colliders.push({ x: PEN.x - 2, z: PEN.z + 2.6, r: 0.6 });
+  // A small shade roof
+  for (const [x, z] of [[1, 1.5], [3.2, 1.5], [1, 3.4], [3.2, 3.4]]) box(0.1, 2, 0.1, 0x6b4426, PEN.x + x, 1, PEN.z + z);
+  thatchedRoof(2.8, 2.4, 0.8, PEN.x + 2.1, 2, PEN.z + 2.45);
+}
+// Four-legged animals built from boxes; model faces +z
+function makeBeast({ color, body, legH, head, horns, hornColor = 0xd8d0c0 }) {
+  const g = new THREE.Group(), legs = [];
+  const [w, h, l] = body;
+  box(w, h, l, color, 0, legH + h / 2, 0, g);
+  box(head[0], head[1], head[2], color, 0, legH + h * 0.9, l / 2 + head[2] / 2 - 0.05, g);
+  if (horns) for (const sx of [-1, 1]) { const hn = mesh(new THREE.ConeGeometry(0.035, horns, 5), hornColor, sx * head[0] * 0.35, legH + h * 0.9 + head[1] / 2 + horns / 2 - 0.05, l / 2 + 0.05, g); hn.rotation.z = -sx * 0.6; hn.rotation.x = -0.4; }
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const p = new THREE.Group(); p.position.set(sx * w * 0.32, legH, sz * l * 0.36); g.add(p);
+    box(w * 0.22, legH, w * 0.22, color, 0, -legH / 2, 0, p); legs.push(p);
+  }
+  scene.add(g);
+  return { g, legs, target: new THREE.Vector3(), wait: rand(0, 3), phase: 0 };
+}
+const pens = { goat: [], buffalo: [], ducks: [] };
+function spawnAnimals() {
+  const want = { goat: S.animals.goat, buffalo: S.animals.buffalo, ducks: S.animals.ducks ? 3 : 0 };
+  while (pens.goat.length < want.goat) pens.goat.push(makeBeast({ color: [0xe8dcc8, 0x6b4a2a][pens.goat.length % 2], body: [0.36, 0.38, 0.75], legH: 0.42, head: [0.22, 0.24, 0.3], horns: 0.22 }));
+  while (pens.buffalo.length < want.buffalo) pens.buffalo.push(makeBeast({ color: 0x2a2a2e, body: [0.75, 0.75, 1.7], legH: 0.62, head: [0.4, 0.4, 0.55], horns: 0.45, hornColor: 0x555555 }));
+  while (pens.ducks.length < want.ducks) {
+    const g = new THREE.Group();
+    mesh(new THREE.SphereGeometry(0.16, 8, 6), 0xffffff, 0, 0.12, 0, g).scale.set(1, 0.75, 1.4);
+    mesh(new THREE.SphereGeometry(0.09, 8, 6), 0xffffff, 0, 0.27, 0.17, g);
+    box(0.06, 0.03, 0.1, 0xff9a1a, 0, 0.26, 0.28, g);
+    scene.add(g);
+    pens.ducks.push({ g, a: rand(0, 6.28), r: rand(1, 2.8), speed: rand(0.15, 0.3) * (Math.random() < 0.5 ? -1 : 1) });
+  }
+  [...pens.goat, ...pens.buffalo].forEach(b => { if (!b.placed) { b.placed = true; b.g.position.set(PEN.x + rand(-2.5, 2.5), 0, PEN.z + rand(-2.5, 1)); b.target.copy(b.g.position); } });
+  trough.hay.visible = S.animals.fedDay === S.day;
+}
+function updateAnimals(dt) {
+  for (const b of [...pens.goat, ...pens.buffalo]) {
+    b.wait -= dt;
+    const to = b.target.clone().sub(b.g.position); to.y = 0;
+    let moving = false;
+    if (to.length() < 0.1) { if (b.wait <= 0) { b.target.set(PEN.x + rand(-2.8, 2.8), 0, PEN.z + rand(-2.8, 0.8)); b.wait = rand(2, 6); } }
+    else { to.normalize(); b.g.position.addScaledVector(to, dt * 0.6); b.g.rotation.y = Math.atan2(to.x, to.z); moving = true; }
+    b.phase = moving ? b.phase + dt * 7 : 0;
+    b.legs.forEach((l, i) => { l.rotation.x = Math.sin(b.phase + (i % 2 ? Math.PI : 0)) * 0.4; });
+  }
+  for (const d of pens.ducks) {
+    d.a += d.speed * dt;
+    d.g.position.set(POND.x + Math.cos(d.a) * d.r, 0.04 + Math.sin(performance.now() / 400 + d.r) * 0.02, POND.z + Math.sin(d.a) * d.r);
+    d.g.rotation.y = -d.a + (d.speed > 0 ? Math.PI : 0);
+  }
+}
+const ANIMALS = {
+  goat: { emoji: '🐐', name: ['Goat', 'మేక'], price: 150, max: 2 },
+  buffalo: { emoji: '🐃', name: ['Buffalo', 'బర్రె'], price: 400, max: 1 },
+  ducks: { emoji: '🦆', name: ['3 Ducks', '3 బాతులు'], price: 120, max: 1 },
+};
+
 // Season colours and festival decorations for today
 function applyDay() {
   const se = season(), f = festival(), id = f && f.id;
@@ -964,6 +1057,7 @@ function neem(x, z) {
 for (let i = 0; i < 40; i++) {
   const a = srand(0, 6.28), r = srand(18, 50), x = Math.cos(a) * r, z = Math.sin(a) * r;
   if (Math.abs(x - 6) < 3 || Math.abs(z - 14) < 2.5) continue;
+  if (Math.hypot(x + 24, z + 4) < 5.5 || (Math.abs(x - 22) < 4.5 && Math.abs(z - 22) < 4.5)) continue; // keep the pond and the pen clear
   if (i % 3) mesh(new THREE.IcosahedronGeometry(srand(0.4, 0.8), 0), 0x4a8a30, x, 0.35, z);
   else mesh(new THREE.DodecahedronGeometry(srand(0.25, 0.5), 0), 0x9a958c, x, 0.2, z);
 }
@@ -1039,7 +1133,7 @@ function toast(msg, type = '') {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
   setTimeout(() => t.remove(), 3200);
 }
-const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
+const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
 let invShown = '';
 function renderInventory(changed) {
   const count = k => k === 'seed' ? Object.values(S.seeds).reduce((a, b) => a + b, 0) : S.inv[k];
@@ -1127,7 +1221,7 @@ function closePanel() {
 }
 function pickOption(i) { const o = panelOpts[i]; if (o && !o.disabled) o.fn(); }
 
-const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35 }; // everything the shop buys
+const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35, gmilk: 20 }; // everything the shop buys
 function produceValue() { return Object.keys(PRICE).reduce((t, k) => t + (S.inv[k] || 0) * PRICE[k], 0); }
 function sellAll(mult = 1) { const v = Math.round(produceValue() * mult); for (const k in PRICE) S.inv[k] = 0; S.money += v; return v; }
 const VEG = ['veg', 'brinjal', 'chilli', 'corn'];
@@ -1147,6 +1241,8 @@ function openShop() {
           toast(tr(`🪙 Sold for ₹${value}`, `🪙 ₹${value} కి అమ్మారు`), 'good');
           openShop();
         } },
+      { label: tr('🌾 Fodder bundle · ₹5', '🌾 గడ్డి కట్ట · ₹5'), disabled: S.money < 5,
+        fn: () => { S.money -= 5; S.inv.fodder++; SFX.coin(); renderInventory('fodder'); openShop(); } },
       { label: tr('Buy tea powder · ₹15', 'టీ పొడి కొను · ₹15'), disabled: S.money < 15,
         fn: () => { S.money -= 15; S.inv.tea++; SFX.coin(); renderInventory('tea'); openShop(); } },
       ...seasonCrops().map(k => { const c = CROPS[k]; return { label: `${c.emoji} ${tr(`6 ${c.name[0]} seeds`, `6 ${c.name[1]} విత్తనాలు`)} · ₹${c.seedPrice}`, disabled: S.money < c.seedPrice,
@@ -1194,6 +1290,27 @@ function updateHome(dt) {
       for (let i = 0; i < 6; i++) setTimeout(() => tone(TUNE[Math.floor(Math.random() * TUNE.length)], 0.22, 'triangle', 0.025), i * 230);
     }
   }
+}
+// Animal pen: feed, milk and buy animals
+function openPen() {
+  const A = S.animals, fed = A.fedDay === S.day, grazers = A.goat + A.buffalo;
+  const lines = [
+    `🐐 ${tr('Goats', 'మేకలు')}: ${A.goat}  ·  🐃 ${tr('Buffalo', 'బర్రె')}: ${A.buffalo}  ·  🦆 ${tr('Ducks', 'బాతులు')}: ${A.ducks ? 3 : 0}`,
+    grazers ? (fed ? tr('✅ Fed today', '✅ ఈ రోజు మేత వేశారు') : tr('Feed them with a fodder bundle (shop) before milking.', 'పాలు పితికే ముందు మేత (గడ్డి కట్ట) వేయండి. గడ్డి షాప్‌లో దొరుకుతుంది.')) : tr('Buy animals for milk every day!', 'రోజూ పాల కోసం పశువులను కొనండి!'),
+  ];
+  const options = [];
+  if (grazers && !fed) options.push({ label: S.inv.fodder ? tr('🌾 Feed the animals', '🌾 మేత వేయి') : tr('🌾 Feed (need fodder from the shop)', '🌾 మేత (షాప్‌లో గడ్డి కొనండి)'), disabled: !S.inv.fodder,
+    fn: () => { S.inv.fodder--; A.fedDay = S.day; trough.hay.visible = true; SFX.good(); renderInventory(); toast(tr('🌾 The animals are happy and full!', '🌾 పశువులు కడుపు నిండా తిన్నాయి!'), 'good'); openPen(); } });
+  if (A.goat && fed && A.goatDay !== S.day) options.push({ label: tr(`🐐 Milk the goats (+${A.goat})`, `🐐 మేక పాలు పితుకు (+${A.goat})`),
+    fn: () => { A.goatDay = S.day; S.inv.gmilk += A.goat; SFX.good(); renderInventory('gmilk'); openPen(); } });
+  if (A.buffalo && fed && A.buffaloDay !== S.day) options.push({ label: tr('🐃 Milk the buffalo (+2 milk)', '🐃 బర్రె పాలు పితుకు (+2 పాలు)'),
+    fn: () => { A.buffaloDay = S.day; S.inv.milk += 2; SFX.moo(); renderInventory('milk'); openPen(); } });
+  for (const [k, a] of Object.entries(ANIMALS)) {
+    const have = k === 'ducks' ? A.ducks : A[k];
+    if (have < a.max) options.push({ label: `${a.emoji} ${tr('Buy', 'కొను:')} ${tr(...a.name)} · ₹${a.price}`, disabled: S.money < a.price,
+      fn: () => { S.money -= a.price; A[k]++; spawnAnimals(); SFX.coin(); renderHud(); toast(`${a.emoji} ${tr(`New ${a.name[0]} at home!`, `కొత్త ${a.name[1]} వచ్చింది!`)}`, 'good'); save(); openPen(); } });
+  }
+  openPanel({ icon: 'goat', title: tr('Animal pen', 'పశువుల దొడ్డి'), text: lines.join('<br>'), options });
 }
 // What each villager says, depending on their quest
 const FARM_TIPS = [
@@ -1372,6 +1489,10 @@ const spots = [
       : S.time < 18 * 60 ? tr('Wait for the evening (after 6 PM)', 'సాయంత్రం 6 తర్వాత కాల్చండి') : '',
     time: 1.2,
     done: () => { S.inv.fireworks = 0; S.crackersUntil = S.time + 25; fireAcc = 0; renderInventory(); completeTask('fest'); } },
+  { at: PEN_GATE, r: 3, label: () => tr('Animal pen', 'పశువుల దొడ్డి'), need: () => '', time: 0.2, done: openPen },
+  { at: DUCK_SPOT, r: 2.4, hidden: () => !S.animals.ducks, label: () => tr('Collect duck eggs', 'బాతు గుడ్లు ఏరు'),
+    need: () => S.animals.duckDay === S.day ? tr('Already collected today', 'ఈ రోజు ఏరారు') : '', time: 1.2, start: SFX.cluck,
+    done: () => { S.animals.duckDay = S.day; S.inv.egg += 2; renderInventory('egg'); toast(tr('🦆 2 duck eggs!', '🦆 2 బాతు గుడ్లు!'), 'good'); } },
   { at: BALL_AT, r: 1.8, hidden: () => !ballMesh.visible, label: () => tr('Pick up the ball', 'బంతి తీసుకో'), need: () => '', time: 0.4,
     done: () => { S.inv.ball = 1; ballMesh.visible = false; SFX.good(); renderInventory('ball'); toast(tr('⚽ Found it! Take it to Chintu.', '⚽ దొరికింది! చింటుకి ఇవ్వండి.'), 'good'); } },
   ...villagers.map(v => ({ at: v.g.position, r: 2.6, hidden: () => !v.g.visible, label: () => tr(`Talk to ${v.names[1]}`, `${v.names[0]}తో మాట్లాడు`),
@@ -1493,6 +1614,7 @@ function sleep() {
   S.weather = rollWeather(S.day);
   if (panelOpen) closePanel();
   if (riding) dismountCart();
+  trough.hay.visible = false;
   S.crackersUntil = 0;
   applyDay();
   // Wake up on the doorstep, looking out at the village
@@ -1763,6 +1885,7 @@ function frame() {
   cart.tails.forEach((t, i) => { t.rotation.z = Math.sin(performance.now() / 500 + i) * 0.25; });
   updateFestivals(dt);
   updateHome(dt);
+  updateAnimals(dt);
   updateWeather(dt);
   updateRain(dt);
 
@@ -1781,6 +1904,7 @@ renderFarm();
 placeBall();
 applyDay();
 applyHome();
+spawnAnimals();
 renderMenu();
 updateSky();
 addEventListener('beforeunload', save);
@@ -1810,7 +1934,7 @@ if (new URLSearchParams(location.search).has('debug')) {
       const tick = () => { if (performance.now() - t0 > secs * 1000) { keys.KeyW = keys.KeyS = keys.KeyA = keys.KeyD = false; res(); } else setTimeout(tick, 50); }; tick(); }); },
     setDay(d) { S.day = d; S.done = {}; applyDay(); renderTasks(); },
     get sparks() { return sparks.length; },
-    refresh() { renderFarm(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
+    refresh() { spawnAnimals(); renderFarm(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
 }
