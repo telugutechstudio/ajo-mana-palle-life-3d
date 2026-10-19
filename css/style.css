@@ -128,3 +128,46 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .ach b { display: block; font-size: 14px; }
 .ach small { color: #c4d2b8; font-size: 12px; }
 .ach-stats { font-size: 12px; color: #c4d2b8; margin: 8px 0 2px; }
+
+/* Touch screens: bigger targets */
+@media (pointer: coarse) {
+  .panel-btns button { padding: 13px 14px; font-size: 16px; }
+  .act-btn { min-width: 140px; padding: 18px 20px; font-size: 17px; }
+  .run-btn { width: 72px; height: 72px; }
+  .tasks-btn, .menu-btn { width: 52px; height: 52px; }
+  .tasks-btn { right: 70px; }
+}
+/* Short landscape phones: keep the HUD and the dialog compact */
+@media (max-height: 480px) {
+  .panel { padding: 10px 12px; max-height: 92vh; overflow-y: auto; }
+  .panel p { margin: 4px 0 8px; font-size: 14px; }
+  .panel-head .i3d { width: 32px; height: 32px; }
+  .tasks { max-height: 60vh; overflow-y: auto; }
+  .prompt { bottom: 40%; }
+  .progress { bottom: 50%; }
+  #toasts { top: 70px; }
+}
+/* Dialogs sit above toasts */
+.panel { z-index: 21; }
+/* Narrow portrait phones: two rows of HUD pills, inventory below them */
+@media (max-width: 520px) {
+  .hud-top { max-width: calc(100vw - 140px); gap: 6px; }
+  .pill { font-size: 12px; padding: 4px 8px; }
+  .pill .i3d { width: 20px; height: 20px; }
+  .pill .bar { width: 54px; }
+  .inventory { top: calc(max(10px, env(safe-area-inset-top)) + 80px); }
+}
+/* Short landscape phones: compact start menu so Play is visible without scrolling */
+@media (max-height: 480px) {
+  .menu { padding: 8px; }
+  .menu-card { padding: 10px 16px; }
+  .logo, .menu-card h2, .controls { display: none; }
+  .menu-card h1 { font-size: 24px; margin: 0; }
+  .menu-card p { font-size: 12.5px; margin: 4px 0; line-height: 1.35; }
+  .lang { margin: 2px 0 8px; }
+  .lang button { padding: 5px 14px; }
+  .big-btn { padding: 10px; font-size: 18px; }
+  .menu-row { margin-top: 8px; }
+  .small-btn { padding: 6px 12px; font-size: 13px; }
+}
+@media (max-width: 520px) { #toasts { top: 132px; } }

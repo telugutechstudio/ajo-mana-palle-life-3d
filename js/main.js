@@ -23,6 +23,7 @@ function hydrateIcons() { document.querySelectorAll('[data-ico]').forEach(el => 
 function defaultState() {
   return {
     lang: 'te', // Telugu first; English is one tap away in the menu
+    gfx: null, // 'high' or 'low'; phones start on low
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
@@ -207,6 +208,15 @@ function updateSky() {
   const night = h < 6 || h > 18.3;
   for (const l of lanterns) l.intensity = night ? 1.6 : 0;
 }
+
+// Graphics quality: low turns off shadows, renders at 1x and caps at 30 fps to save battery
+const lowGfx = () => (S.gfx || (IS_TOUCH ? 'low' : 'high')) === 'low';
+function applyGfx() {
+  renderer.setPixelRatio(lowGfx() ? 1 : Math.min(devicePixelRatio, IS_TOUCH ? 1.3 : 1.75));
+  sun.castShadow = !lowGfx();
+  resize();
+}
+function buzz(ms = 15) { if (IS_TOUCH && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) { /* not allowed */ } }
 
 /* ============================== WORLD HELPERS ========================= */
 const colliders = []; // {x, z, r}
@@ -1125,7 +1135,7 @@ function startFishing() {
     update(dt) {
       this.t += dt;
       const bob = Math.sin(performance.now() / 300) * 0.015;
-      if (this.phase === 'wait') { bobber.position.y = 0.08 + bob; if (this.t >= this.biteAt) { this.phase = 'bite'; this.t = 0; noise(0.2, 0.15, 1400); updatePrompt(); } }
+      if (this.phase === 'wait') { bobber.position.y = 0.08 + bob; if (this.t >= this.biteAt) { this.phase = 'bite'; this.t = 0; noise(0.2, 0.15, 1400); buzz(120); updatePrompt(); } }
       else { bobber.position.y = -0.02 + Math.sin(performance.now() / 40) * 0.03; if (this.t > 1.1) endFishing(tr('🐟 It got away! Try again.', '🐟 చేప తప్పించుకుంది! మళ్ళీ ప్రయత్నించండి.')); }
       rod.tip.getWorldPosition(tipPos);
       fishLine.geometry.setFromPoints([tipPos, bobber.position]);
@@ -1209,7 +1219,7 @@ function startCricket() {
       const runs = e < 0.035 ? 6 : e < 0.07 ? 4 : e < 0.11 ? 2 : e < 0.16 ? 1 : 0;
       if (!runs) { toast(tr('Swing and a miss!', 'బ్యాట్‌కి తగలలేదు!')); updatePrompt(); return; }
       this.runs += runs; this.phase = 'hit'; this.t = 0; if (runs === 6) stat('sixes');
-      noise(0.08, 0.3, 1800); tone(900, 0.08, 'square', 0.04);
+      noise(0.08, 0.3, 1800); tone(900, 0.08, 'square', 0.04); buzz(40);
       const power = { 1: 6, 2: 9, 4: 15, 6: 19 }[runs];
       this.vel = new THREE.Vector3(-power, runs === 6 ? 11 : runs === 4 ? 3 : 4, rand(-5, 5));
       toast(runs === 6 ? tr('🔥 SIX!', '🔥 సిక్స్!') : runs === 4 ? tr('💥 FOUR!', '💥 ఫోర్!') : tr(`🏃 ${runs} run${runs > 1 ? 's' : ''}`, `🏃 ${runs} పరుగులు`), runs >= 4 ? 'good' : '');
@@ -2126,6 +2136,7 @@ function interact() {
   const s = focus;
   if (s.start) s.start();
   busy = { s, t: 0, total: s.time, tickAcc: 0 };
+  buzz();
   $('progressFill').style.width = '0%';
   $('progressLabel').textContent = s.label() + '…';
   $('progress').classList.remove('hidden');
@@ -2267,6 +2278,7 @@ document.addEventListener('click', e => {
     case 'tasks': tasksOpen = !tasksOpen; renderTasks(); break;
     case 'lang': S.lang = el.dataset.id; renderMenu(); renderTasks(); renderHud(); save(); break;
     case 'sound': S.sound = !S.sound; renderMenu(); save(); break;
+    case 'gfx': S.gfx = lowGfx() ? 'high' : 'low'; applyGfx(); renderMenu(); save(); break;
     case 'ach': renderAchievements(); $('achBox').classList.toggle('hidden'); break;
     case 'reset':
       if (confirmReset) { resetting = true; localStorage.removeItem(SAVE_KEY); location.reload(); }
@@ -2286,6 +2298,7 @@ function renderMenu() {
   $('soundBtn').textContent = (S.sound ? '🔊 ' : '🔇 ') + tr('Sound', 'సౌండ్');
   $('resetBtn').textContent = '🗑️ ' + tr('New game', 'కొత్త గేమ్');
   $('achBtn').textContent = '🏆 ' + tr('Achievements', 'అచీవ్‌మెంట్లు');
+  $('gfxBtn').textContent = (lowGfx() ? '🔋 ' : '✨ ') + tr(`Graphics: ${lowGfx() ? 'Low (saves battery)' : 'High'}`, `గ్రాఫిక్స్: ${lowGfx() ? 'తక్కువ (బ్యాటరీ ఆదా)' : 'ఎక్కువ'}`);
   $('achBox').classList.add('hidden');
   confirmReset = false;
   $('controlsHelp').innerHTML = IS_TOUCH
@@ -2312,6 +2325,7 @@ function startPlaying() {
   if (IS_TOUCH) $('touch').classList.remove('hidden');
   else lockPointer();
   renderTasks(); renderInventory(); renderHud();
+  if (IS_TOUCH && innerHeight > innerWidth) toast(tr('📱 Turn your phone sideways for the best view', '📱 బాగా చూడటానికి ఫోన్‌ని అడ్డంగా తిప్పండి'));
   if (!S.done.water && S.day === 1) toast(tr('Start your day: walk to the well and draw water 💧', 'మీ రోజు మొదలుపెట్టండి: బావి దగ్గరకు వెళ్ళి నీళ్ళు తోడండి 💧'));
 }
 
@@ -2362,8 +2376,12 @@ function updateWeather(dt) {
     if (thunderAcc <= 0) { thunderAcc = rand(7, 16); flash = 0.35; setTimeout(SFX.thunder, rand(300, 1400)); }
   }
 }
+let lastFrame = 0;
 function frame() {
   requestAnimationFrame(frame);
+  const now = performance.now();
+  if (lowGfx() && now - lastFrame < 31) return; // ~30 fps on low graphics
+  lastFrame = now;
   const dt = Math.min(clock.getDelta(), 0.1);
   if (playing) {
     // Movement
@@ -2473,6 +2491,7 @@ placeBall();
 applyDay();
 applyHome();
 spawnAnimals();
+applyGfx();
 renderMenu();
 updateSky();
 addEventListener('beforeunload', save);
@@ -2504,6 +2523,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get sparks() { return sparks.length; },
     get mini() { return mini ? mini.phase : null; },
     checkAch: checkAchievements,
+    get lowGfx() { return lowGfx(); },
     get santaOn() { return santa.g.visible; },
     get santaSpots() { const o = {}; for (const [k, v] of Object.entries(santa.spots)) o[k] = [v.x, v.z, SANTA.x, SANTA.z]; o.wheel = [WHEEL_SPOT.x, WHEEL_SPOT.z + 0.5, WHEEL.x, WHEEL.z]; return o; },
     get miniState() { return mini ? { phase: mini.phase, t: mini.t, T: mini.T, ball: mini.ball, runs: mini.runs, swung: mini.swung } : null; },
