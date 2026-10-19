@@ -13,7 +13,7 @@ const EMOJI = { water: '💧', wood: '🪵', egg: '🥚', milk: '🥛', cow: '�
   sun: '☀️', moon: '🌙', chicken: '🐔', home: '🏡', shop: '🛒', check: '✅', fire: '🔥', tea: '🌿', leaf: '🍃', speaker: '🔊', rice: '🌾',
   hut: '🛖', tasks: '📋', gear: '⚙️', speech: '💬', bucket: '🪣', axe: '🪓', party: '🎉', pray: '🙏',
   rain: '🌧️', storm: '⛈️', veg: '🍅', seed: '🌱', ball: '⚽', basket: '🧺', umbrella: '☔', oldman: '👴', woman: '👩', boy: '👦', farmer: '🧑‍🌾',
-  kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
+  brinjal: '🍆', chilli: '🌶️', corn: '🌽', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
 function ico(key, cls = '') {
   return `<span class="i3d ${cls}" data-e="${EMOJI[key] || '❔'}"><img src="icons/${key}.webp" alt="" draggable="false" onerror="this.parentNode.classList.add('fail')"></span>`;
 }
@@ -26,7 +26,7 @@ function defaultState() {
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
-    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 6, veg: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
+    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
     home: { level: 0, fan: false, radio: false, tv: false, tvDay: 0 },
@@ -34,7 +34,8 @@ function defaultState() {
     eggsLeft: [true, true, true],
     milked: false, prayed: false,
     done: {},
-    farm: Array.from({ length: 6 }, () => ({ stage: -1, watered: false })), // stage -1 empty, 0 seeds, 1 sprout, 2 growing, 3 ripe
+    farm: Array.from({ length: 6 }, () => ({ stage: -1, watered: false, crop: 'tomato' })), // stage -1 empty, 0 seeds, then grows to the crop's ripe stage
+    seeds: { tomato: 6, brinjal: 0, chilli: 0, corn: 0 },
     quests: { ram: 'new', lak: 'new', ball: 'new' }, // new | active | done
     ballSpot: 0,
     weather: { rain: false },
@@ -49,6 +50,9 @@ function load() {
       s.inv = Object.assign(d.inv, s.inv); // older saves miss the newer items
       s.quests = Object.assign(d.quests, s.quests);
       s.home = Object.assign(d.home, s.home);
+      if (!JSON.parse(raw).seeds) s.seeds.tomato = s.inv.seed || 0; // seeds used to be one item
+      s.inv.seed = 0;
+      s.farm.forEach(p => { p.crop = p.crop || 'tomato'; });
       return s;
     }
   } catch (e) { /* storage blocked */ }
@@ -544,7 +548,18 @@ const TEMPLE_FRONT = new THREE.Vector3(TEMPLE.x, 0, TEMPLE.z + 4.6);
   scene.add(inst);
 }
 
-// Vegetable farm (polam) next to the well: 6 plots of tomatoes
+// Crops: each season has its own; the farm grows one crop per plot
+const CROPS = {
+  tomato: { item: 'veg', emoji: '🍅', name: ['Tomato', 'టమాటా'], seedPrice: 10, yield: 2, grow: 3, color: 0xe0301e, fruit: [1, 1, 1], seasons: ['winter', 'monsoon'] },
+  brinjal: { item: 'brinjal', emoji: '🍆', name: ['Brinjal', 'వంకాయ'], seedPrice: 14, yield: 2, grow: 3, color: 0x5a2a7a, fruit: [1, 1.8, 1], seasons: ['winter', 'summer', 'monsoon'] },
+  chilli: { item: 'chilli', emoji: '🌶️', name: ['Chilli', 'మిరపకాయ'], seedPrice: 12, yield: 4, grow: 3, color: 0xd81e1e, fruit: [0.5, 1.9, 0.5], seasons: ['summer'] },
+  corn: { item: 'corn', emoji: '🌽', name: ['Corn', 'మొక్కజొన్న'], seedPrice: 16, yield: 1, grow: 4, color: 0xf2c12e, fruit: [0.9, 2.2, 0.9], seasons: ['monsoon'], tall: 1.6 },
+};
+const cropOf = p => CROPS[p.crop] || CROPS.tomato;
+const isRipe = p => p.stage >= 0 && p.stage >= cropOf(p).grow;
+const isGrowing = p => p.stage >= 0 && p.stage < cropOf(p).grow;
+const seasonCrops = () => Object.keys(CROPS).filter(k => CROPS[k].seasons.includes(season().id));
+// Vegetable farm (polam) next to the well: 6 plots
 const FARM_C = new THREE.Vector3(-9.5, 0, 10.5);
 const plots = [];
 for (const z of [9.6, 11.4]) for (const x of [-11.5, -9.5, -7.5]) {
@@ -568,11 +583,12 @@ function renderFarm() {
   plots.forEach((p, i) => {
     const st = S.farm[i];
     p.soil.material.color.set(st.watered || wet > 0.5 ? 0x4a2e1a : 0x8a6038);
+    const c = cropOf(st), ripe = isRipe(st);
     p.mounds.visible = st.stage === 0;
     p.plants.visible = st.stage >= 1;
-    const s = [0, 0.35, 0.7, 1][Math.max(0, st.stage)];
-    p.plants.children.forEach(c => c.scale.setScalar(s));
-    p.fruit.forEach(f => { f.visible = st.stage === 3; });
+    const s = st.stage < 1 ? 0 : ripe ? 1 : 0.35 + 0.65 * (st.stage - 1) / Math.max(1, c.grow - 1);
+    p.plants.children.forEach(pl => pl.scale.set(s, s * (c.tall || 1), s));
+    p.fruit.forEach(f => { f.visible = ripe; f.material = mat(c.color); f.scale.set(...c.fruit); });
   });
 }
 
@@ -1023,10 +1039,11 @@ function toast(msg, type = '') {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
   setTimeout(() => t.remove(), 3200);
 }
-const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
+const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
 let invShown = '';
 function renderInventory(changed) {
-  const html = INV_ORDER.filter(([k]) => S.inv[k] > 0).map(([k]) => `<div class="inv ${k === changed ? 'pop' : ''}">${ico(k)}${S.inv[k]}</div>`).join('');
+  const count = k => k === 'seed' ? Object.values(S.seeds).reduce((a, b) => a + b, 0) : S.inv[k];
+  const html = INV_ORDER.filter(([k]) => count(k) > 0).map(([k]) => `<div class="inv ${k === changed ? 'pop' : ''}">${ico(k)}${count(k)}</div>`).join('');
   if (html !== invShown || changed) { $('inventory').innerHTML = html; invShown = html; }
 }
 const TASKS = [
@@ -1110,26 +1127,30 @@ function closePanel() {
 }
 function pickOption(i) { const o = panelOpts[i]; if (o && !o.disabled) o.fn(); }
 
-const PRICE = { egg: 8, milk: 25, veg: 12 };
-function produceValue() { return S.inv.egg * PRICE.egg + S.inv.milk * PRICE.milk + S.inv.veg * PRICE.veg; }
+const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35 }; // everything the shop buys
+function produceValue() { return Object.keys(PRICE).reduce((t, k) => t + (S.inv[k] || 0) * PRICE[k], 0); }
+function sellAll(mult = 1) { const v = Math.round(produceValue() * mult); for (const k in PRICE) S.inv[k] = 0; S.money += v; return v; }
+const VEG = ['veg', 'brinjal', 'chilli', 'corn'];
+const vegCount = () => VEG.reduce((t, k) => t + S.inv[k], 0);
+function takeVeg(n) { for (const k of VEG) while (n > 0 && S.inv[k] > 0) { S.inv[k]--; n--; } }
 function openShop() {
   const value = produceValue(), f = festival();
   openPanel({
     icon: 'shop', title: tr('Kirana Shop', 'కిరాణా షాప్'),
-    text: tr(`"Namaskaram! I buy eggs ₹${PRICE.egg}, milk ₹${PRICE.milk} and tomatoes ₹${PRICE.veg}."`,
-      `"నమస్కారం! గుడ్డు ₹${PRICE.egg}, పాలు ₹${PRICE.milk}, టమాటా ₹${PRICE.veg} కి కొంటాను."`),
+    text: tr(`"Namaskaram! I buy eggs ₹${PRICE.egg}, milk ₹${PRICE.milk}, tomatoes ₹${PRICE.veg}, brinjal ₹${PRICE.brinjal}, chilli ₹${PRICE.chilli} and corn ₹${PRICE.corn}."`,
+      `"నమస్కారం! గుడ్డు ₹${PRICE.egg}, పాలు ₹${PRICE.milk}, టమాటా ₹${PRICE.veg}, వంకాయ ₹${PRICE.brinjal}, మిరపకాయ ₹${PRICE.chilli}, మొక్కజొన్న ₹${PRICE.corn}."`),
     options: [
       { label: value ? tr(`Sell everything · ₹${value}`, `అన్నీ అమ్ము · ₹${value}`) : tr('Nothing to sell', 'అమ్మడానికి ఏమీ లేదు'), disabled: !value,
         fn: () => {
-          S.money += value; S.inv.egg = 0; S.inv.milk = 0; S.inv.veg = 0;
+          sellAll();
           SFX.coin(); renderInventory(); completeTask('sell');
           toast(tr(`🪙 Sold for ₹${value}`, `🪙 ₹${value} కి అమ్మారు`), 'good');
           openShop();
         } },
       { label: tr('Buy tea powder · ₹15', 'టీ పొడి కొను · ₹15'), disabled: S.money < 15,
         fn: () => { S.money -= 15; S.inv.tea++; SFX.coin(); renderInventory('tea'); openShop(); } },
-      { label: tr('Buy 6 tomato seeds · ₹10', '6 టమాటా విత్తనాలు · ₹10'), disabled: S.money < 10,
-        fn: () => { S.money -= 10; S.inv.seed += 6; SFX.coin(); renderInventory('seed'); openShop(); } },
+      ...seasonCrops().map(k => { const c = CROPS[k]; return { label: `${c.emoji} ${tr(`6 ${c.name[0]} seeds`, `6 ${c.name[1]} విత్తనాలు`)} · ₹${c.seedPrice}`, disabled: S.money < c.seedPrice,
+        fn: () => { S.money -= c.seedPrice; S.seeds[k] += 6; SFX.coin(); renderInventory('seed'); openShop(); } }; }),
       ...(f ? [{ label: `${f.emoji} ${tr(f.itemName[0], f.itemName[1])} · ₹${f.price}`, disabled: S.money < f.price || S.inv[f.item] > 0 || !!S.done.fest,
         fn: () => { S.money -= f.price; S.inv[f.item] = 1; SFX.coin(); renderInventory(f.item); openShop(); } }] : []),
     ],
@@ -1178,8 +1199,8 @@ function updateHome(dt) {
 const FARM_TIPS = [
   ['Water your plants every day. They only grow on days they got water.', 'మొక్కలకు రోజూ నీళ్ళు పోయి బాబు. నీళ్ళు పోసిన రోజే పెరుగుతాయి.'],
   ['When it rains, the sky waters your farm for free!', 'వర్షం పడితే నీ పొలానికి దేవుడే నీళ్ళు పోస్తాడు!'],
-  ['Seeds are ₹10 at the kirana shop. Tomatoes sell for ₹12 each.', 'విత్తనాలు కిరాణా షాప్‌లో ₹10. టమాటా ఒక్కోటి ₹12.'],
-  ['Three watered days and the tomatoes turn red. Then harvest!', 'మూడు రోజులు నీళ్ళు పోస్తే టమాటాలు ఎర్రబడతాయి. అప్పుడు కోయి!'],
+  ['Each season has its own crops: winter tomato and brinjal, summer chilli, monsoon corn. Seeds are at the kirana shop.', 'ప్రతి కాలానికి వేరే పంట: చలికాలం టమాటా, వంకాయ; ఎండాకాలం మిరపకాయ; వర్షాకాలం మొక్కజొన్న. విత్తనాలు కిరాణా షాప్‌లో.'],
+  ['Three watered days and the tomatoes turn red. Corn needs four. Then harvest!', 'మూడు రోజులు నీళ్ళు పోస్తే టమాటాలు ఎర్రబడతాయి. మొక్కజొన్నకి నాలుగు రోజులు. అప్పుడు కోయి!'],
 ];
 const PROVERBS = [
   ['"Rain on time, crops on time: that is a happy village."', '"సమయానికి వాన, సమయానికి పంట — అదే సంతోషమైన పల్లె."'],
@@ -1193,14 +1214,14 @@ function openTalk(v) {
   let text = '', options = [];
   if (v.id === 'ram') {
     if (Q.ram === 'new') {
-      text = tr('"Orey babu! My knees hurt and I can\'t go to the market. Bring me 2 tomatoes from your farm and I\'ll give you ₹40."',
-        '"ఒరేయ్ బాబు! మోకాళ్ళ నొప్పి, సంతకి వెళ్ళలేను. నీ పొలం నుంచి 2 టమాటాలు తెచ్చి పెట్టు, ₹40 ఇస్తాను."');
-      options = [{ label: tr('Sure, tatha!', 'సరే తాతా!'), fn: () => { Q.ram = 'active'; toast(tr('📜 Quest: 2 tomatoes for Ramayya', '📜 పని: రామయ్య తాతకి 2 టమాటాలు')); openTalk(v); } }];
+      text = tr('"Orey babu! My knees hurt and I can\'t go to the market. Bring me 2 vegetables from your farm and I\'ll give you ₹40."',
+        '"ఒరేయ్ బాబు! మోకాళ్ళ నొప్పి, సంతకి వెళ్ళలేను. నీ పొలం నుంచి 2 కూరగాయలు తెచ్చి పెట్టు, ₹40 ఇస్తాను."');
+      options = [{ label: tr('Sure, tatha!', 'సరే తాతా!'), fn: () => { Q.ram = 'active'; toast(tr('📜 Quest: 2 vegetables for Ramayya', '📜 పని: రామయ్య తాతకి 2 కూరగాయలు')); openTalk(v); } }];
     } else if (Q.ram === 'active') {
-      text = S.inv.veg >= 2 ? tr('"Ah, fresh tomatoes! Give them here."', '"ఆహా, తాజా టమాటాలు! ఇటివ్వు."')
-        : tr('"Still waiting for 2 tomatoes, babu. Grow them on the farm next to the well."', '"ఇంకా 2 టమాటాల కోసం చూస్తున్నా బాబు. బావి పక్కన పొలంలో పండించు."');
-      if (S.inv.veg >= 2) options = [{ label: tr('Give 2 tomatoes', '2 టమాటాలు ఇవ్వు'), fn: () => {
-        S.inv.veg -= 2; S.money += 40; Q.ram = 'done'; SFX.coin(); renderInventory(); renderHud();
+      text = vegCount() >= 2 ? tr('"Ah, fresh vegetables! Give them here."', '"ఆహా, తాజా కూరగాయలు! ఇటివ్వు."')
+        : tr('"Still waiting for 2 vegetables, babu. Grow them on the farm next to the well."', '"ఇంకా 2 కూరగాయల కోసం చూస్తున్నా బాబు. బావి పక్కన పొలంలో పండించు."');
+      if (vegCount() >= 2) options = [{ label: tr('Give 2 vegetables', '2 కూరగాయలు ఇవ్వు'), fn: () => {
+        takeVeg(2); S.money += 40; Q.ram = 'done'; SFX.coin(); renderInventory(); renderHud();
         toast(tr('🎉 Ramayya gave you ₹40!', '🎉 రామయ్య తాత ₹40 ఇచ్చారు!'), 'good'); openTalk(v); } }];
     } else text = tr(...PROVERBS[S.day % PROVERBS.length]);
   } else if (v.id === 'lak') {
@@ -1240,14 +1261,22 @@ function openTalk(v) {
 // The farm does one thing at a time: harvest ripe plots, else plant empty ones, else water dry ones
 function farmAction() {
   const F = S.farm;
-  const ripe = F.filter(p => p.stage === 3).length, empty = F.filter(p => p.stage < 0).length;
-  const dry = F.filter(p => p.stage >= 0 && p.stage < 3 && !p.watered).length;
+  const ripe = F.filter(isRipe).length, empty = F.filter(p => p.stage < 0).length;
+  const dry = F.filter(p => isGrowing(p) && !p.watered).length;
   const idle = (need) => ({ id: 'none', label: tr('Farm', 'పొలం'), need, time: 0 });
-  if (ripe) return { id: 'harvest', label: tr(`Harvest tomatoes (${ripe} plots)`, `టమాటాలు కోయి (${ripe} మడులు)`), need: '', time: 1.8 };
-  if (empty && S.inv.seed) return { id: 'plant', label: tr('Plant seeds', 'విత్తనాలు నాటు'), need: '', time: 2 };
+  const usable = seasonCrops().filter(k => S.seeds[k] > 0);
+  if (ripe) return { id: 'harvest', label: tr(`Harvest (${ripe} plots)`, `పంట కోయి (${ripe} మడులు)`), need: '', time: 1.8 };
+  if (empty && usable.length) return { id: 'plant', label: tr('Plant seeds', 'విత్తనాలు నాటు'), need: '', time: usable.length > 1 ? 0.2 : 2, choose: usable.length > 1, usable };
   if (dry) return { id: 'water', label: tr('Water the crops', 'మొక్కలకు నీళ్ళు పోయి'), need: S.inv.water ? '' : tr('Need water (well)', 'నీళ్ళు కావాలి (బావి)'), time: 2 };
-  if (empty === F.length) return idle(tr('Buy seeds at the shop', 'షాప్‌లో విత్తనాలు కొనండి'));
+  if (empty === F.length) return idle(Object.values(S.seeds).some(n => n) ? tr(`These seeds don't grow in ${season().name[0]}`, `ఈ విత్తనాలు ${season().name[1]}లో పెరగవు`) : tr('Buy seeds at the shop', 'షాప్‌లో విత్తనాలు కొనండి'));
   return idle(tr('All watered. Plants grow overnight', 'నీళ్ళు పోశారు. రాత్రికి పెరుగుతాయి'));
+}
+function plantCrop(k) {
+  const empty = S.farm.filter(p => p.stage < 0).slice(0, S.seeds[k]);
+  empty.forEach(p => { p.stage = 0; p.crop = k; p.watered = wet > 0.5; });
+  S.seeds[k] -= empty.length;
+  toast(tr(`🌱 Planted ${CROPS[k].name[0]} in ${empty.length} plots. Water them every day!`, `🌱 ${empty.length} మడుల్లో ${CROPS[k].name[1]} నాటారు. రోజూ నీళ్ళు పోయండి!`), 'good');
+  renderFarm(); renderInventory(); completeTask('farm');
 }
 // Each spot: where it is, what the prompt says, whether it can be used now and what it does.
 const spots = [
@@ -1299,18 +1328,21 @@ const spots = [
     done: () => {
       const a = farmAction(), F = S.farm;
       if (a.id === 'harvest') {
-        const ripe = F.filter(p => p.stage === 3);
-        ripe.forEach(p => { p.stage = -1; p.watered = false; });
-        S.inv.veg += ripe.length * 2; SFX.good();
-        toast(tr(`🍅 Harvested ${ripe.length * 2} tomatoes!`, `🍅 ${ripe.length * 2} టమాటాలు కోశారు!`), 'good');
+        const got = {};
+        F.filter(isRipe).forEach(p => { const c = cropOf(p); S.inv[c.item] += c.yield; got[p.crop] = (got[p.crop] || 0) + c.yield; p.stage = -1; p.watered = false; });
+        SFX.good();
+        toast(Object.entries(got).map(([k, n]) => `${CROPS[k].emoji} ${n} ${tr(CROPS[k].name[0], CROPS[k].name[1])}`).join(' · ') + tr(' harvested!', ' కోశారు!'), 'good');
       } else if (a.id === 'plant') {
-        const empty = F.filter(p => p.stage < 0).slice(0, S.inv.seed);
-        empty.forEach(p => { p.stage = 0; p.watered = wet > 0.5; });
-        S.inv.seed -= empty.length;
-        toast(tr(`🌱 Planted ${empty.length} plots. Water them every day!`, `🌱 ${empty.length} మడుల్లో నాటారు. రోజూ నీళ్ళు పోయండి!`), 'good');
+        if (a.choose) {
+          openPanel({ icon: 'seed', title: tr('Which crop?', 'ఏ పంట వేయాలి?'), text: tr(`${season().name[0]} crops`, `${season().name[1]} పంటలు`),
+            options: a.usable.map(k => ({ label: `${CROPS[k].emoji} ${tr(...CROPS[k].name)} (${S.seeds[k]} ${tr('seeds', 'విత్తనాలు')})`, fn: () => { closePanel(); plantCrop(k); } })) });
+          return;
+        }
+        plantCrop(a.usable[0]);
+        return;
       } else if (a.id === 'water') {
         S.inv.water--;
-        F.forEach(p => { if (p.stage >= 0 && p.stage < 3) p.watered = true; });
+        F.forEach(p => { if (isGrowing(p)) p.watered = true; });
         toast(tr('💧 Crops watered. They will grow tonight.', '💧 మొక్కలకు నీళ్ళు పోశారు. రాత్రికి పెరుగుతాయి.'), 'good');
       }
       renderFarm(); renderInventory(); completeTask('farm');
@@ -1322,8 +1354,7 @@ const spots = [
       : !produceValue() ? tr('Nothing to sell', 'అమ్మడానికి ఏమీ లేదు') : '',
     time: 1, start: SFX.jingle,
     done: () => {
-      const value = Math.round(produceValue() * 1.5);
-      S.money += value; S.inv.egg = 0; S.inv.milk = 0; S.inv.veg = 0; S.townDay = S.day;
+      const value = sellAll(1.5); S.townDay = S.day;
       S.time = Math.min(S.time + 90, 22.9 * 60); fade();
       SFX.coin(); renderInventory(); renderHud(); completeTask('sell');
       toast(tr(`🐂 Town market trip! Sold for ₹${value} (+1.5 hours)`, `🐂 పట్నం సంత! ₹${value} కి అమ్మారు (+1.5 గంటలు)`), 'good');
@@ -1455,7 +1486,7 @@ function sleep() {
   S.eggsLeft = [true, true, true];
   eggMeshes.forEach(m => { m.visible = true; });
   // Watered plants grow one stage overnight
-  S.farm.forEach(p => { if (p.watered && p.stage >= 0 && p.stage < 3) p.stage++; p.watered = false; });
+  S.farm.forEach(p => { if (p.watered && isGrowing(p)) p.stage++; p.watered = false; });
   renderFarm();
   // Finished quests come back the next day; unfinished ones wait
   for (const k in S.quests) if (S.quests[k] === 'done') S.quests[k] = 'new';
@@ -1474,7 +1505,7 @@ function sleep() {
   if (f) toast(tr(`${f.emoji} Happy ${f.name[0]}! Day ${S.day}`, `${f.emoji} ${f.name[1]} శుభాకాంక్షలు! రోజు ${S.day}`), 'good');
   else toast(tr(`🌅 Good morning! Day ${S.day}`, `🌅 శుభోదయం! రోజు ${S.day}`) + (newSeason ? tr(` · ${se.name[0]} begins`, ` · ${se.name[1]} మొదలైంది`) : ''), 'good');
   if (S.weather.rain && (S.home.radio || S.home.tv)) toast(tr(`🌦️ Rain expected around ${fmtHour(S.weather.start)} today`, `🌦️ ఈ రోజు ${fmtHour(S.weather.start)} కి వర్షం వచ్చేలా ఉంది`));
-  if (S.farm.some(p => p.stage === 3)) toast(tr('🍅 Your tomatoes are ripe! Harvest them.', '🍅 టమాటాలు పండాయి! కోయండి.'), 'good');
+  if (S.farm.some(isRipe)) toast(tr('🧺 Your crops are ripe! Harvest them.', '🧺 పంట పండింది! కోయండి.'), 'good');
   save();
 }
 function fade() {
@@ -1641,7 +1672,7 @@ function updateWeather(dt) {
     soilWet = wet > 0.5;
     if (soilWet) {
       let n = 0;
-      S.farm.forEach(p => { if (p.stage >= 0 && p.stage < 3 && !p.watered) { p.watered = true; n++; } });
+      S.farm.forEach(p => { if (isGrowing(p) && !p.watered) { p.watered = true; n++; } });
       if (n) { completeTask('farm'); toast(tr('🌱 The rain watered your crops!', '🌱 వర్షం మీ మొక్కలకు నీళ్ళు పోసింది!'), 'good'); }
     }
     renderFarm();
@@ -1779,6 +1810,7 @@ if (new URLSearchParams(location.search).has('debug')) {
       const tick = () => { if (performance.now() - t0 > secs * 1000) { keys.KeyW = keys.KeyS = keys.KeyA = keys.KeyD = false; res(); } else setTimeout(tick, 50); }; tick(); }); },
     setDay(d) { S.day = d; S.done = {}; applyDay(); renderTasks(); },
     get sparks() { return sparks.length; },
+    refresh() { renderFarm(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
 }
