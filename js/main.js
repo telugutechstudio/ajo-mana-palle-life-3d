@@ -29,6 +29,7 @@ function defaultState() {
     inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    cricketDay: 0,
     fishing: { day: 0, n: 0 },
     animals: { goat: 0, buffalo: 0, ducks: 0, fedDay: 0, goatDay: 0, buffaloDay: 0, duckDay: 0 },
     home: { level: 0, fan: false, radio: false, tv: false, tvDay: 0 },
@@ -646,6 +647,7 @@ villager('ven', { cloth: 0x7a9a5a, hair: 0x2a2a2a }, ['వెంకన్న మ
 function updateVillagers(dt) {
   const h = S.time / 60, awake = h >= 6 && h < 20.5;
   for (const v of villagers) {
+    if (v.override) { v.g.visible = true; continue; }
     v.g.visible = awake;
     if (!awake) continue;
     const dx = player.position.x - v.g.position.x, dz = player.position.z - v.g.position.z;
@@ -989,6 +991,97 @@ function startFishing() {
       endFishing(big ? tr('🐠 A big fish! (₹40)', '🐠 పెద్ద చేప! (₹40)') : tr('🐟 Caught a fish! (₹15)', '🐟 చేప పట్టారు! (₹15)'), 'good');
     },
   };
+}
+// Cricket ground behind the north-west houses: you bat, Chintu bowls
+const PITCH = { bat: new THREE.Vector3(-25, 0, 26), bowl: new THREE.Vector3(-35, 0, 26) };
+{
+  const p = mesh(new THREE.PlaneGeometry(12.5, 2.4), 0xc8a46a, -30, 0.035, 26); p.rotation.x = -Math.PI / 2; p.castShadow = false;
+  for (const x of [-25.8, -34.2]) { const l = mesh(new THREE.PlaneGeometry(0.06, 2.4), 0xffffff, x, 0.04, 26); l.rotation.x = -Math.PI / 2; l.castShadow = false; }
+  for (const x of [-24.3, -35.7]) {
+    for (const dz of [-0.11, 0, 0.11]) mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.72, 6), 0xf2ead6, x, 0.36, 26 + dz);
+    box(0.03, 0.03, 0.26, 0xf2ead6, x, 0.73, 26);
+  }
+}
+const bat = new THREE.Group();
+{
+  box(0.035, 0.32, 0.035, 0x5a3418, 0, 0.16, 0, bat);
+  box(0.11, 0.55, 0.03, 0xe8c890, 0, -0.27, 0, bat);
+  bat.position.set(0.32, -0.4, -0.6); bat.rotation.set(0, -0.9, 0.5);
+  bat.visible = false;
+}
+const cball = mesh(new THREE.SphereGeometry(0.07, 10, 8), 0xb01818, 0, 0, 0);
+cball.visible = false;
+const BALL_FROM = new THREE.Vector3(-34.6, 2.0, 26);
+function startCricket() {
+  const chintu = villagers.find(v => v.id === 'chintu');
+  chintu.override = true;
+  chintu.g.position.set(PITCH.bowl.x - 1.5, 0, PITCH.bowl.z + 0.4); chintu.g.rotation.y = Math.PI / 2;
+  player.position.copy(PITCH.bat); yaw = Math.PI / 2; pitch = -0.06;
+  bat.visible = true; fade();
+  const TARGET = 12;
+  mini = {
+    phase: 'runup', t: 0, ball: 0, runs: 0, swing: 0,
+    prompt() {
+      const score = `${tr('Ball', 'బాల్')} ${Math.min(6, this.ball + 1)}/6 · ${tr('Runs', 'పరుగులు')} ${this.runs}/${TARGET}`;
+      if (this.phase === 'flight' && !this.swung) return { text: `🏏 ${score} — ${tr('Swing!', 'కొట్టు!')}`, btn: tr('Swing', 'కొట్టు'), hot: true };
+      return { text: `🏏 ${score} — ${this.phase === 'runup' ? tr('Chintu is running in…', 'చింటు బౌలింగ్ చేస్తున్నాడు…') : tr('Watch the ball…', 'బంతిని చూడండి…')}`, btn: tr('Swing', 'కొట్టు') };
+    },
+    update(dt) {
+      this.t += dt;
+      this.swing = Math.max(0, this.swing - dt);
+      bat.rotation.z = this.swing > 0 ? 0.5 - (1 - this.swing / 0.3) * 2.2 : 0.5;
+      bat.rotation.x = this.swing > 0 ? -0.6 : 0;
+      chintu.legs[0].rotation.x = this.phase === 'runup' ? Math.sin(this.t * 14) * 0.6 : 0; chintu.legs[1].rotation.x = -chintu.legs[0].rotation.x;
+      if (this.phase === 'runup') {
+        chintu.g.position.x = PITCH.bowl.x - 1.5 + this.t * 1.2;
+        if (this.t > 1.1) { this.phase = 'flight'; this.t = 0; this.T = rand(0.85, 1.15); this.zoff = rand(-0.28, 0.28); this.swung = false; cball.visible = true; updatePrompt(); }
+      } else if (this.phase === 'flight') {
+        const u = this.t / this.T, ub = 0.7;
+        cball.position.x = BALL_FROM.x + (PITCH.bat.x + 0.6 - BALL_FROM.x) * u;
+        cball.position.z = BALL_FROM.z + this.zoff * u;
+        cball.position.y = u < ub ? BALL_FROM.y * (1 - u / ub) ** 1.4 + 0.07 : 0.07 + (u - ub) / (1 - ub) * 0.8;
+        if (u > 1.12) {
+          if (Math.abs(this.zoff) < 0.14) { toast(tr('💥 Bowled! Chintu got you out!', '💥 బౌల్డ్! చింటు ఔట్ చేశాడు!'), 'bad'); noise(0.15, 0.2, 2500); this.finish(); return; }
+          toast(tr('Dot ball.', 'డాట్ బాల్.'));
+          this.next();
+        }
+      } else if (this.phase === 'hit') {
+        this.vel.y -= 9.8 * dt;
+        cball.position.addScaledVector(this.vel, dt);
+        if (cball.position.y < 0.07) { cball.position.y = 0.07; this.vel.y *= -0.4; this.vel.multiplyScalar(0.7); }
+        if (this.t > 1.8) this.next();
+      }
+    },
+    action() {
+      if (this.phase !== 'flight' || this.swung) return;
+      this.swung = true; this.swing = 0.3;
+      const u = this.t / this.T, e = Math.abs(u - 0.93);
+      const runs = e < 0.035 ? 6 : e < 0.07 ? 4 : e < 0.11 ? 2 : e < 0.16 ? 1 : 0;
+      if (!runs) { toast(tr('Swing and a miss!', 'బ్యాట్‌కి తగలలేదు!')); updatePrompt(); return; }
+      this.runs += runs; this.phase = 'hit'; this.t = 0;
+      noise(0.08, 0.3, 1800); tone(900, 0.08, 'square', 0.04);
+      const power = { 1: 6, 2: 9, 4: 15, 6: 19 }[runs];
+      this.vel = new THREE.Vector3(-power, runs === 6 ? 11 : runs === 4 ? 3 : 4, rand(-5, 5));
+      toast(runs === 6 ? tr('🔥 SIX!', '🔥 సిక్స్!') : runs === 4 ? tr('💥 FOUR!', '💥 ఫోర్!') : tr(`🏃 ${runs} run${runs > 1 ? 's' : ''}`, `🏃 ${runs} పరుగులు`), runs >= 4 ? 'good' : '');
+      if (runs >= 4) SFX.good();
+      updatePrompt();
+    },
+    next() {
+      this.ball++; cball.visible = false;
+      if (this.ball >= 6 || this.runs >= TARGET) { this.finish(); return; }
+      this.phase = 'runup'; this.t = 0; chintu.g.position.x = PITCH.bowl.x - 1.5; updatePrompt();
+    },
+    finish() {
+      mini = null; bat.visible = false; cball.visible = false; chintu.override = false;
+      S.cricketDay = S.day;
+      if (this.runs >= TARGET) {
+        S.money += 25; S.energy = Math.min(100, S.energy + 10); SFX.good(); renderHud();
+        toast(tr(`🏆 You won with ${this.runs} runs! Chintu gives you ₹25. Energy +10`, `🏆 ${this.runs} పరుగులతో గెలిచారు! చింటు ₹25 ఇచ్చాడు. శక్తి +10`), 'good');
+      } else toast(tr(`Chintu wins! You made ${this.runs} runs. Play again tomorrow!`, `చింటు గెలిచాడు! మీరు ${this.runs} పరుగులు చేశారు. రేపు మళ్ళీ ఆడండి!`));
+      updatePrompt();
+    },
+  };
+  updatePrompt();
 }
 function endFishing(msg, type = '') {
   mini = null;
@@ -1421,7 +1514,9 @@ function openTalk(v) {
       if (S.inv.ball) options = [{ label: tr('Give the ball', 'బంతి ఇవ్వు'), fn: () => {
         S.inv.ball = 0; S.money += 10; S.energy = Math.min(100, S.energy + 10); Q.ball = 'done'; SFX.good(); renderInventory(); renderHud();
         toast(tr('🎉 Chintu gave you ₹10 and a big smile! Energy +10', '🎉 చింటు ₹10 ఇచ్చాడు! శక్తి +10'), 'good'); openTalk(v); } }];
-    } else text = tr('"Thanks anna! Let\'s play cricket tomorrow!"', '"థాంక్స్ అన్నా! రేపు క్రికెట్ ఆడదాం!"');
+    } else text = tr('"Thanks anna! Want to play cricket?"', '"థాంక్స్ అన్నా! క్రికెట్ ఆడదామా?"');
+    if (S.cricketDay !== S.day && S.time < 18 * 60) options.push({ label: tr('🏏 Play cricket (score 12 in 6 balls)', '🏏 క్రికెట్ ఆడు (6 బాల్స్‌లో 12 పరుగులు)'), fn: () => { closePanel(); startCricket(); } });
+    else if (S.cricketDay === S.day) text += tr(' "Good game today!"', ' "ఈ రోజు మంచి ఆట!"');
   } else {
     text = tr(...FARM_TIPS[tipIdx % FARM_TIPS.length]);
     options = [{ label: tr('Another tip', 'ఇంకో సలహా'), fn: () => { tipIdx++; openTalk(v); } }];
@@ -1681,7 +1776,7 @@ function sleep() {
   for (const k in S.quests) if (S.quests[k] === 'done') S.quests[k] = 'new';
   S.weather = rollWeather(S.day);
   if (panelOpen) closePanel();
-  if (mini) endFishing();
+  if (mini) (mini.finish ? mini.finish() : endFishing());
   if (riding) dismountCart();
   trough.hay.visible = false;
   S.crackersUntil = 0;
@@ -1811,7 +1906,7 @@ function openMenu() {
   playing = false;
   if (panelOpen) { panelOpen = false; $('panel').classList.add('hidden'); }
   rainSound(0);
-  if (mini) endFishing();
+  if (mini) (mini.finish ? mini.finish() : endFishing());
   if (document.pointerLockElement) document.exitPointerLock();
   renderMenu();
   $('menu').classList.remove('hidden');
@@ -1972,7 +2067,7 @@ function frame() {
 /* ============================== BOOT ================================== */
 hydrateIcons();
 S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
-camera.add(rod);
+camera.add(rod, bat);
 renderFarm();
 placeBall();
 applyDay();
@@ -2008,6 +2103,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     setDay(d) { S.day = d; S.done = {}; applyDay(); renderTasks(); },
     get sparks() { return sparks.length; },
     get mini() { return mini ? mini.phase : null; },
+    get miniState() { return mini ? { phase: mini.phase, t: mini.t, T: mini.T, ball: mini.ball, runs: mini.runs, swung: mini.swung } : null; },
     refresh() { spawnAnimals(); renderFarm(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
