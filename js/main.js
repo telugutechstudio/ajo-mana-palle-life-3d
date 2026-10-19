@@ -29,6 +29,8 @@ function defaultState() {
     inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ricebag: 0, sapling: 0, letter: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    tools: { pot: false, axe: false },
+    santa: { day: 0, snacks: 0, sold: 0, rides: 0 },
     storyDay: 0, storiesHeard: 0,
     story: { step: 0, litter: [false, false, false, false, false] }, // the sarpanch's village development story
     post: { day: 0, to: null, done: false },
@@ -62,6 +64,8 @@ function load() {
       s.animals = Object.assign(d.animals, s.animals);
       s.paddy = Object.assign(d.paddy, s.paddy);
       s.story = Object.assign(d.story, s.story);
+      s.tools = Object.assign(d.tools, s.tools);
+      s.santa = Object.assign(d.santa, s.santa);
       s.post = Object.assign(d.post, s.post);
       s.chaiStall = Object.assign(d.chaiStall, s.chaiStall);
       if (!JSON.parse(raw).seeds) s.seeds.tomato = s.inv.seed || 0; // seeds used to be one item
@@ -103,6 +107,9 @@ const FESTIVALS = {
 };
 function festival(day = S.day) { return FESTIVALS[dayOfYear(day)] || null; }
 const isFest = id => festival()?.id === id;
+// Every seventh day is Sunday, when the weekly santa (market) sets up near the temple
+const isSantaDay = (day = S.day) => dayOfYear(day) % 7 === 0;
+const santaOpen = () => isSantaDay() && S.time >= 8 * 60 && S.time < 18 * 60;
 
 /* ============================== RENDERER ============================== */
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -1304,6 +1311,76 @@ const ANIMALS = {
   ducks: { emoji: '🦆', name: ['3 Ducks', '3 బాతులు'], price: 120, max: 1 },
 };
 
+// Weekly santa: market stalls and a giant wheel east of the temple
+const SANTA = new THREE.Vector3(14, 0, -30);
+const santa = { g: new THREE.Group(), colliders: [], wheel: new THREE.Group(), cabins: [], spots: {} };
+scene.add(santa.g);
+function stall(x, z, awning, lines, cloth) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = Math.atan2(SANTA.x - x, SANTA.z - z); santa.g.add(g);
+  box(2.2, 0.9, 0.7, 0x8a5a2a, 0, 0.45, 0, g);
+  for (const [px, pz] of [[-1, -0.9], [1, -0.9], [-1, 0.35], [1, 0.35]]) box(0.07, 2.3, 0.07, 0x6b4426, px, 1.15, pz, g);
+  const aw = mesh(new THREE.BoxGeometry(2.4, 0.07, 1.6), awning, 0, 2.3, -0.25, g); aw.rotation.x = 0.15;
+  const t = () => textTexture(lines, 512, 140, '#fff3d0', '#7a2a00');
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.5), new THREE.MeshBasicMaterial({ map: t() })); sign.position.set(0, 2.0, 0.56); g.add(sign);
+  document.fonts.load('700 48px "Baloo Tammudu 2"').then(() => { sign.material.map = t(); sign.material.needsUpdate = true; });
+  const p = makePerson({ cloth }); scene.remove(p.g); p.g.position.set(0, 0, -0.75); g.add(p.g);
+  const c = { x, z, r: 1.2 }; colliders.push(c); santa.colliders.push(c);
+  const front = new THREE.Vector3(Math.sin(g.rotation.y), 0, Math.cos(g.rotation.y)).multiplyScalar(1.6).add(new THREE.Vector3(x, 0, z));
+  return { g, front };
+}
+santa.spots.bajji = stall(9.6, -27.4, 0xe8443a, ['మిర్చి బజ్జీ', 'Mirchi Bajji'], 0xffc83d).front;
+santa.spots.tools = stall(14, -25.8, 0x2f6ad0, ['కుండలు • పనిముట్లు', 'Pots & Tools'], 0x7a9a5a).front;
+santa.spots.buyer = stall(18.6, -27.6, 0x2fb35a, ['కూరగాయల వ్యాపారి', 'Produce buyer ×1.3'], 0xd0306a).front;
+// Giant wheel (jaint wheel): the wheel turns about the z axis, cabins stay level
+const WHEEL = new THREE.Vector3(14.5, 4.8, -35.5), WHEEL_R = 3.8;
+{
+  for (const sx of [-1, 1]) for (const sz of [-0.9, 0.9]) { const leg = box(0.15, 5.6, 0.15, 0xd84a3a, WHEEL.x + sx * 1.6, 2.6, WHEEL.z + sz, santa.g); leg.rotation.z = -sx * 0.3; }
+  santa.wheel.position.copy(WHEEL); santa.g.add(santa.wheel);
+  for (const zz of [-0.45, 0.45]) {
+    const rim = mesh(new THREE.TorusGeometry(WHEEL_R, 0.06, 6, 40), 0xffc83d, 0, 0, zz, santa.wheel); rim.castShadow = false;
+    for (let i = 0; i < 8; i++) { const sp = box(0.05, WHEEL_R * 2, 0.05, 0xffffff, 0, 0, zz, santa.wheel); sp.rotation.z = i * Math.PI / 8; sp.castShadow = false; }
+  }
+  for (let i = 0; i < 8; i++) {
+    const c = new THREE.Group(); santa.g.add(c);
+    box(0.9, 0.6, 0.8, [0xe8443a, 0x4da3ff, 0x3ccf6e, 0xff8ad8][i % 4], 0, -0.4, 0, c);
+    box(0.05, 0.4, 0.05, 0x888888, 0, 0.05, 0, c);
+    santa.cabins.push(c);
+  }
+  const cl = { x: WHEEL.x, z: WHEEL.z, r: 2.0 }; colliders.push(cl); santa.colliders.push(cl);
+}
+const WHEEL_SPOT = new THREE.Vector3(WHEEL.x, 0, WHEEL.z + 2.4);
+let wheelAngle = 0;
+function updateSanta(dt) {
+  if (!santa.g.visible) return;
+  wheelAngle += dt * (mini && mini.ride ? 0.45 : 0.18);
+  santa.wheel.rotation.z = wheelAngle;
+  santa.cabins.forEach((c, i) => { const a = wheelAngle + i * Math.PI / 4; c.position.set(WHEEL.x + Math.cos(a) * WHEEL_R, WHEEL.y + Math.sin(a) * WHEEL_R, WHEEL.z); });
+}
+function applySanta() {
+  const on = santaOpen();
+  santa.g.visible = on;
+  santa.colliders.forEach((c, i) => { c.r = on ? (i === santa.colliders.length - 1 ? 2.0 : 1.2) : -9; });
+}
+function rideWheel() {
+  const cab = santa.cabins[0];
+  yaw = Math.PI; pitch = -0.2; // look out over the village
+  mini = {
+    ride: true, t: 0, phase: 'ride',
+    prompt() { return { text: tr('🎡 Wheee! Enjoy the view of Mana Palle…', '🎡 హాయ్! మన పల్లె అందాలు చూడండి…'), btn: '🎡' }; },
+    update(dt) {
+      this.t += dt;
+      player.position.set(cab.position.x, cab.position.y - 1.75, cab.position.z + 1.0);
+      if (this.t > 14) this.finish();
+    },
+    action() {},
+    finish() {
+      mini = null; player.position.set(WHEEL_SPOT.x, 0, WHEEL_SPOT.z + 0.6); S.energy = Math.min(100, S.energy + 15);
+      SFX.good(); toast(tr('🎡 What a ride! Energy +15', '🎡 భలే ఉంది! శక్తి +15'), 'good'); updatePrompt();
+    },
+  };
+  updatePrompt();
+}
+
 // Season colours and festival decorations for today
 function applyDay() {
   const se = season(), f = festival(), id = f && f.id;
@@ -1449,6 +1526,7 @@ function renderTasks() {
   if (!tasksOpen) return;
   const se = season(), f = festival();
   el.innerHTML = `<h3>${tr(`Day ${S.day} · ${se.name[0]}`, `రోజు ${S.day} · ${se.name[1]}`)}</h3>` +
+    (isSantaDay() ? `<div class="fest-line">🎡 ${tr('Sunday santa near the temple, 8 AM – 6 PM', 'ఆదివారం సంత: గుడి దగ్గర, ఉ. 8 – సా. 6')}</div>` : '') +
     (f ? `<div class="fest-line">${ico(f.icon)} ${tr(`Happy ${f.name[0]}!`, `${f.name[1]} శుభాకాంక్షలు!`)}</div>` : '') +
     todayTasks().map(([id, t]) => `<div class="task ${S.done[id] ? 'done' : ''}"><span class="box">${S.done[id] ? '✓' : ''}</span>${tr(...t)}</div>`).join('');
 }
@@ -1568,7 +1646,7 @@ function openHome() {
     fn: () => { S.money -= f.price; H[f.id] = true; applyHome(); SFX.coin(); toast(`${f.emoji} ${tr(...f.perk)}`, 'good'); renderHud(); save(); openHome(); } });
   openPanel({ icon: 'home', title: tr(...L.name), text: perks.length ? perks.join('<br>') : tr('A simple hut. Earn money to make it better!', 'చిన్న గుడిసె. డబ్బు సంపాదించి బాగు చేసుకోండి!'), options });
 }
-let tvGlow = 0, radioAcc = 4;
+let tvGlow = 0, radioAcc = 4, hudSanta = 0;
 // The radio plays a short folk tune now and then while you are near home
 const TUNE = [523, 587, 659, 784, 880, 1047];
 function updateHome(dt) {
@@ -1586,6 +1664,15 @@ function updateHome(dt) {
       for (let i = 0; i < 6; i++) setTimeout(() => tone(TUNE[Math.floor(Math.random() * TUNE.length)], 0.22, 'triangle', 0.025), i * 230);
     }
   }
+}
+// Santa tools stall: permanent upgrades
+function openTools() {
+  const T = S.tools, options = [];
+  options.push({ label: T.pot ? tr('🏺 Big water pot (bought)', '🏺 పెద్ద బిందె (కొన్నారు)') : tr('🏺 Big water pot: carry 4 water · ₹60', '🏺 పెద్ద బిందె: 4 నీళ్ళు · ₹60'), disabled: T.pot || S.money < 60,
+    fn: () => { S.money -= 60; T.pot = true; SFX.coin(); renderHud(); openTools(); } });
+  options.push({ label: T.axe ? tr('🪓 Sharp axe (bought)', '🪓 పదునైన గొడ్డలి (కొన్నారు)') : tr('🪓 Sharp axe: faster, carry 5 wood · ₹50', '🪓 పదునైన గొడ్డలి: వేగంగా, 5 కట్టెలు · ₹50'), disabled: T.axe || S.money < 50,
+    fn: () => { S.money -= 50; T.axe = true; SFX.coin(); renderHud(); openTools(); } });
+  openPanel({ icon: 'axe', title: tr('Pots & tools', 'కుండలు • పనిముట్లు'), text: tr('"Good things last for years! Only on Sundays."', '"మంచి వస్తువులు ఏళ్ళు ఉంటాయి! ఆదివారం మాత్రమే."'), options });
 }
 // Animal pen: feed, milk and buy animals
 function openPen() {
@@ -1766,12 +1853,12 @@ function plantCrop(k) {
 // Each spot: where it is, what the prompt says, whether it can be used now and what it does.
 const spots = [
   { at: WELL, r: 2.6, label: () => tr('Draw water', 'నీళ్ళు తోడు'),
-    need: () => S.inv.water >= 2 ? tr('Pot is full (2 max)', 'బిందె నిండింది (2 వరకు)') : '',
+    need: () => S.inv.water >= (S.tools.pot ? 4 : 2) ? tr(`Pot is full (${S.tools.pot ? 4 : 2} max)`, `బిందె నిండింది (${S.tools.pot ? 4 : 2} వరకు)`) : '',
     time: 2.2, start: SFX.water,
     done: () => { S.inv.water++; renderInventory('water'); completeTask('water'); toast(tr('💧 Got a pot of water', '💧 బిందె నీళ్ళు తెచ్చారు'), 'good'); } },
   { at: WOODPILE, r: 2.4, label: () => tr('Collect firewood', 'కట్టెలు తీసుకో'),
-    need: () => S.inv.wood >= 3 ? tr('Carrying enough wood (3 max)', 'కట్టెలు చాలు (3 వరకు)') : '',
-    time: 1.6, start: SFX.chop, tick: () => SFX.chop(),
+    need: () => S.inv.wood >= (S.tools.axe ? 5 : 3) ? tr(`Carrying enough wood (${S.tools.axe ? 5 : 3} max)`, `కట్టెలు చాలు (${S.tools.axe ? 5 : 3} వరకు)`) : '',
+    get time() { return S.tools.axe ? 0.9 : 1.6; }, start: SFX.chop, tick: () => SFX.chop(),
     done: () => { S.inv.wood++; renderInventory('wood'); completeTask('wood'); } },
   { at: CHULHA, r: 2.3, label: () => S.stove.state === 'ready' ? tr('Drink chai', 'చాయ్ తాగు') : tr('Make chai', 'చాయ్ పెట్టు'),
     need: () => {
@@ -1890,6 +1977,15 @@ const spots = [
       S.storyDay = S.day; S.storiesHeard++; S.energy = Math.min(100, S.energy + 10); SFX.good();
       openPanel({ icon: 'oldman', title: '🔥 ' + tr(st[0], st[1]), text: tr(st[2], st[3]) + '<br><br>' + tr('(Energy +10 by the warm fire)', '(వెచ్చని మంట దగ్గర శక్తి +10)') });
     } },
+  { at: santa.spots.bajji, r: 2, hidden: () => !santa.g.visible, label: () => tr('Mirchi bajji stall', 'మిర్చి బజ్జీ కొట్టు'),
+    need: () => (S.santa.day === S.day && S.santa.snacks >= 2) ? tr('Sold out! Come next Sunday', 'అయిపోయాయి! వచ్చే ఆదివారం రండి') : S.money < 15 ? tr('Bajji costs ₹15', 'బజ్జీ ₹15') : '',
+    time: 0.8, done: () => { if (S.santa.day !== S.day) Object.assign(S.santa, { day: S.day, snacks: 0, sold: 0, rides: 0 }); S.santa.snacks++; S.money -= 15; S.energy = Math.min(100, S.energy + 40); SFX.good(); renderHud(); toast(tr('🌶️ Hot mirchi bajji! Energy +40', '🌶️ వేడి మిర్చి బజ్జీ! శక్తి +40'), 'good'); } },
+  { at: santa.spots.tools, r: 2, hidden: () => !santa.g.visible, label: () => tr('Pots & tools stall', 'కుండలు • పనిముట్ల కొట్టు'), need: () => '', time: 0.2, done: () => openTools() },
+  { at: santa.spots.buyer, r: 2, hidden: () => !santa.g.visible, label: () => tr('Sell to the produce buyer (×1.3)', 'వ్యాపారికి అమ్ము (×1.3)'),
+    need: () => !produceValue() ? tr('Nothing to sell', 'అమ్మడానికి ఏమీ లేదు') : '', time: 0.6,
+    done: () => { const v = sellAll(1.3); SFX.coin(); renderInventory(); renderHud(); completeTask('sell'); toast(tr(`🪙 The buyer paid ₹${v}`, `🪙 వ్యాపారి ₹${v} ఇచ్చాడు`), 'good'); } },
+  { at: WHEEL_SPOT, r: 2.2, hidden: () => !santa.g.visible, label: () => tr('Ride the giant wheel · ₹10', 'జెయింట్ వీల్ ఎక్కు · ₹10'),
+    need: () => S.money < 10 ? tr('Need ₹10', '₹10 కావాలి') : '', time: 0.3, done: () => { S.money -= 10; renderHud(); rideWheel(); } },
   { at: BALL_AT, r: 1.8, hidden: () => !ballMesh.visible, label: () => tr('Pick up the ball', 'బంతి తీసుకో'), need: () => '', time: 0.4,
     done: () => { S.inv.ball = 1; ballMesh.visible = false; SFX.good(); renderInventory('ball'); toast(tr('⚽ Found it! Take it to Chintu.', '⚽ దొరికింది! చింటుకి ఇవ్వండి.'), 'good'); } },
   ...villagers.map(v => ({ at: v.g.position, r: 2.6, hidden: () => !v.g.visible, label: () => tr(`Talk to ${v.names[1]}`, `${v.names[0]}తో మాట్లాడు`),
@@ -2034,6 +2130,7 @@ function sleep() {
   fade();
   SFX.good();
   const se = season(), f = festival(), newSeason = (dayOfYear() - 1) % 7 === 0;
+  if (isSantaDay()) toast(tr('🎡 It\'s Sunday! The santa is set up near the temple.', '🎡 ఈ రోజు ఆదివారం! గుడి దగ్గర సంత పెట్టారు.'), 'good');
   if (f) toast(tr(`${f.emoji} Happy ${f.name[0]}! Day ${S.day}`, `${f.emoji} ${f.name[1]} శుభాకాంక్షలు! రోజు ${S.day}`), 'good');
   else toast(tr(`🌅 Good morning! Day ${S.day}`, `🌅 శుభోదయం! రోజు ${S.day}`) + (newSeason ? tr(` · ${se.name[0]} begins`, ` · ${se.name[1]} మొదలైంది`) : ''), 'good');
   if (S.weather.rain && (S.home.radio || S.home.tv)) toast(tr(`🌦️ Rain expected around ${fmtHour(S.weather.start)} today`, `🌦️ ఈ రోజు ${fmtHour(S.weather.start)} కి వర్షం వచ్చేలా ఉంది`));
@@ -2299,6 +2396,8 @@ function frame() {
   cart.tails.forEach((t, i) => { t.rotation.z = Math.sin(performance.now() / 500 + i) * 0.25; });
   updateFestivals(dt);
   updateHome(dt);
+  hudSanta = (hudSanta || 0) + dt; if (hudSanta > 1) { hudSanta = 0; if (santa.g.visible !== santaOpen()) applySanta(); }
+  updateSanta(dt);
   updateBonfire(dt);
   updateFlies();
   if (upgrades.lamps.visible) { const hh = S.time / 60, on = hh > 18.3 || hh < 5.8; lampHead.color.set(on ? 0xfff2b0 : 0x555544); streetLight.intensity = on ? 1.5 : 0; }
@@ -2319,6 +2418,7 @@ hydrateIcons();
 S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
 camera.add(rod, bat);
 applyStory();
+applySanta();
 renderFarm();
 renderPaddy();
 placeBall();
@@ -2355,8 +2455,10 @@ if (new URLSearchParams(location.search).has('debug')) {
     setDay(d) { S.day = d; S.done = {}; applyDay(); renderTasks(); },
     get sparks() { return sparks.length; },
     get mini() { return mini ? mini.phase : null; },
+    get santaOn() { return santa.g.visible; },
+    get santaSpots() { const o = {}; for (const [k, v] of Object.entries(santa.spots)) o[k] = [v.x, v.z, SANTA.x, SANTA.z]; o.wheel = [WHEEL_SPOT.x, WHEEL_SPOT.z + 0.5, WHEEL.x, WHEEL.z]; return o; },
     get miniState() { return mini ? { phase: mini.phase, t: mini.t, T: mini.T, ball: mini.ball, runs: mini.runs, swung: mini.swung } : null; },
-    refresh() { applyStory(); spawnAnimals(); renderFarm(); renderPaddy(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
+    refresh() { applySanta(); applyStory(); spawnAnimals(); renderFarm(); renderPaddy(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
 }
