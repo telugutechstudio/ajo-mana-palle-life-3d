@@ -116,3 +116,4 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .fest-line { display: flex; align-items: center; gap: 6px; margin: -2px 0 6px; font-weight: 700; color: #ffd2a0; }
 .fest-line .i3d { width: 24px; height: 24px; }
 .privacy { display: inline-block; margin-top: 10px; font-size: 12px; color: #a8c098; }
+.prompt.hot { background: rgba(200, 90, 0, .85); border-color: #ffd25a; animation: pop .25s; font-size: 19px; }

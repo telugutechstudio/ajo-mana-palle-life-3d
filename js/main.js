@@ -26,9 +26,10 @@ function defaultState() {
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
-    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
+    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    fishing: { day: 0, n: 0 },
     animals: { goat: 0, buffalo: 0, ducks: 0, fedDay: 0, goatDay: 0, buffaloDay: 0, duckDay: 0 },
     home: { level: 0, fan: false, radio: false, tv: false, tvDay: 0 },
     stove: { state: 'empty', until: 0 }, // empty | cooking | ready
@@ -943,6 +944,58 @@ const POND = new THREE.Vector3(-24, 0, -4), POND_R = 3.8;
   colliders.push({ x: POND.x, z: POND.z, r: POND_R - 0.2 });
 }
 const DUCK_SPOT = new THREE.Vector3(POND.x, 0, POND.z + POND_R + 0.9);
+const FISH_SPOT = new THREE.Vector3(POND.x + POND_R + 0.9, 0, POND.z);
+
+// Mini-games (fishing, cricket) take over the action button while they run
+let mini = null;
+// Fishing: cast, wait for the float to dip, then pull at the right moment
+const rod = new THREE.Group();
+{
+  const stick = mesh(new THREE.CylinderGeometry(0.012, 0.025, 1.7, 6), 0x8a5a2a, 0, 0, 0, rod);
+  stick.rotation.x = -1.0; stick.castShadow = false;
+  rod.position.set(0.32, -0.32, -0.55);
+  rod.tip = new THREE.Object3D(); rod.tip.position.set(0, 0.46, -0.715); rod.add(rod.tip);
+  rod.visible = false;
+}
+const bobber = mesh(new THREE.SphereGeometry(0.07, 10, 8), 0xff3030, 0, 0, 0);
+bobber.visible = false;
+const fishLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xffffff }));
+fishLine.visible = false; fishLine.frustumCulled = false; scene.add(fishLine);
+const tipPos = new THREE.Vector3();
+function startFishing() {
+  const dir = POND.clone().sub(player.position); dir.y = 0; dir.normalize();
+  bobber.position.copy(player.position).addScaledVector(dir, 2.6); bobber.position.y = 0.08;
+  rod.visible = bobber.visible = fishLine.visible = true;
+  noise(0.25, 0.1, 900);
+  mini = {
+    phase: 'wait', t: 0, biteAt: rand(2, 6), cancelOnMove: true,
+    prompt() { return this.phase === 'bite' ? { text: tr('🐟 A bite! Pull now!', '🐟 చేప పట్టింది! లాగండి!'), btn: tr('Pull!', 'లాగు!'), hot: true } : { text: tr('Waiting for a bite… (pulling early scares the fish)', 'చేప కోసం ఎదురుచూపు… (ముందే లాగితే పారిపోతుంది)'), btn: tr('Pull', 'లాగు') }; },
+    update(dt) {
+      this.t += dt;
+      const bob = Math.sin(performance.now() / 300) * 0.015;
+      if (this.phase === 'wait') { bobber.position.y = 0.08 + bob; if (this.t >= this.biteAt) { this.phase = 'bite'; this.t = 0; noise(0.2, 0.15, 1400); updatePrompt(); } }
+      else { bobber.position.y = -0.02 + Math.sin(performance.now() / 40) * 0.03; if (this.t > 1.1) endFishing(tr('🐟 It got away! Try again.', '🐟 చేప తప్పించుకుంది! మళ్ళీ ప్రయత్నించండి.')); }
+      rod.tip.getWorldPosition(tipPos);
+      fishLine.geometry.setFromPoints([tipPos, bobber.position]);
+    },
+    action() {
+      if (this.phase !== 'bite') { endFishing(tr('Too early! The fish swam away.', 'చాలా తొందరగా లాగారు! చేప పారిపోయింది.')); return; }
+      const r = Math.random();
+      S.fishing.n++;
+      if (r < 0.06) { endFishing(tr('👡 You caught… an old chappal! 😂', '👡 పట్టింది… పాత చెప్పు! 😂')); return; }
+      const big = r > 0.72;
+      S.inv[big ? 'bigfish' : 'fish']++;
+      SFX.good(); renderInventory(big ? 'bigfish' : 'fish');
+      endFishing(big ? tr('🐠 A big fish! (₹40)', '🐠 పెద్ద చేప! (₹40)') : tr('🐟 Caught a fish! (₹15)', '🐟 చేప పట్టారు! (₹15)'), 'good');
+    },
+  };
+}
+function endFishing(msg, type = '') {
+  mini = null;
+  rod.visible = bobber.visible = fishLine.visible = false;
+  if (msg) toast(msg, type);
+  updatePrompt();
+}
 
 // Animal pen (pashuvula dodi) with a feeding trough
 const PEN = new THREE.Vector3(22, 0, 22), PEN_GATE = new THREE.Vector3(22, 0, 17.6);
@@ -1133,7 +1186,7 @@ function toast(msg, type = '') {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
   setTimeout(() => t.remove(), 3200);
 }
-const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
+const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['fish', '🐟'], ['bigfish', '🐠'], ['rod', '🎣'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
 let invShown = '';
 function renderInventory(changed) {
   const count = k => k === 'seed' ? Object.values(S.seeds).reduce((a, b) => a + b, 0) : S.inv[k];
@@ -1221,7 +1274,7 @@ function closePanel() {
 }
 function pickOption(i) { const o = panelOpts[i]; if (o && !o.disabled) o.fn(); }
 
-const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35, gmilk: 20 }; // everything the shop buys
+const PRICE = { egg: 8, milk: 25, veg: 12, brinjal: 15, chilli: 8, corn: 35, gmilk: 20, fish: 15, bigfish: 40 }; // everything the shop buys
 function produceValue() { return Object.keys(PRICE).reduce((t, k) => t + (S.inv[k] || 0) * PRICE[k], 0); }
 function sellAll(mult = 1) { const v = Math.round(produceValue() * mult); for (const k in PRICE) S.inv[k] = 0; S.money += v; return v; }
 const VEG = ['veg', 'brinjal', 'chilli', 'corn'];
@@ -1241,6 +1294,8 @@ function openShop() {
           toast(tr(`🪙 Sold for ₹${value}`, `🪙 ₹${value} కి అమ్మారు`), 'good');
           openShop();
         } },
+      ...(S.inv.rod ? [] : [{ label: tr('🎣 Fishing rod · ₹40', '🎣 గాలం · ₹40'), disabled: S.money < 40,
+        fn: () => { S.money -= 40; S.inv.rod = 1; SFX.coin(); renderInventory('rod'); toast(tr('🎣 Go fishing at the pond, west of the coop!', '🎣 కోళ్ల గూడు పడమర వైపు చెరువులో చేపలు పట్టండి!'), 'good'); openShop(); } }]),
       { label: tr('🌾 Fodder bundle · ₹5', '🌾 గడ్డి కట్ట · ₹5'), disabled: S.money < 5,
         fn: () => { S.money -= 5; S.inv.fodder++; SFX.coin(); renderInventory('fodder'); openShop(); } },
       { label: tr('Buy tea powder · ₹15', 'టీ పొడి కొను · ₹15'), disabled: S.money < 15,
@@ -1493,6 +1548,10 @@ const spots = [
   { at: DUCK_SPOT, r: 2.4, hidden: () => !S.animals.ducks, label: () => tr('Collect duck eggs', 'బాతు గుడ్లు ఏరు'),
     need: () => S.animals.duckDay === S.day ? tr('Already collected today', 'ఈ రోజు ఏరారు') : '', time: 1.2, start: SFX.cluck,
     done: () => { S.animals.duckDay = S.day; S.inv.egg += 2; renderInventory('egg'); toast(tr('🦆 2 duck eggs!', '🦆 2 బాతు గుడ్లు!'), 'good'); } },
+  { at: FISH_SPOT, r: 2.6, label: () => tr('Go fishing', 'చేపలు పట్టు'),
+    need: () => !S.inv.rod ? tr('Buy a fishing rod at the shop', 'షాప్‌లో గాలం కొనండి')
+      : (S.fishing.day === S.day && S.fishing.n >= 6) ? tr('The fish are resting. Come back tomorrow', 'చేపలు విశ్రాంతి తీసుకుంటున్నాయి. రేపు రండి') : '',
+    time: 0.4, done: () => { if (S.fishing.day !== S.day) S.fishing = { day: S.day, n: 0 }; S.energy = Math.max(0, S.energy - 2); startFishing(); } },
   { at: BALL_AT, r: 1.8, hidden: () => !ballMesh.visible, label: () => tr('Pick up the ball', 'బంతి తీసుకో'), need: () => '', time: 0.4,
     done: () => { S.inv.ball = 1; ballMesh.visible = false; SFX.good(); renderInventory('ball'); toast(tr('⚽ Found it! Take it to Chintu.', '⚽ దొరికింది! చింటుకి ఇవ్వండి.'), 'good'); } },
   ...villagers.map(v => ({ at: v.g.position, r: 2.6, hidden: () => !v.g.visible, label: () => tr(`Talk to ${v.names[1]}`, `${v.names[0]}తో మాట్లాడు`),
@@ -1563,8 +1622,16 @@ function nearestSpot() {
   return best;
 }
 function updatePrompt() {
-  focus = busy || panelOpen ? null : nearestSpot();
   const p = $('prompt'), btn = $('actBtn');
+  if (mini) {
+    const m = mini.prompt(); focus = null;
+    p.classList.remove('hidden'); p.classList.toggle('hot', !!m.hot);
+    p.innerHTML = `${IS_TOUCH ? '' : '<kbd>E</kbd>'}${m.text}`;
+    btn.classList.remove('hidden'); btn.textContent = m.btn;
+    return;
+  }
+  p.classList.remove('hot');
+  focus = busy || panelOpen ? null : nearestSpot();
   if (!focus) { p.classList.add('hidden'); btn.classList.add('hidden'); return; }
   const need = focus.need();
   p.classList.remove('hidden');
@@ -1573,6 +1640,7 @@ function updatePrompt() {
   btn.textContent = focus.label();
 }
 function interact() {
+  if (mini && !panelOpen) { mini.action(); return; }
   if (busy || !focus || panelOpen) return;
   if (focus.need()) { SFX.bad(); return; }
   if (S.energy <= 0 && focus.time > 1) { SFX.bad(); toast(tr('Too tired! Drink chai or sleep.', 'చాలా అలసిపోయారు! చాయ్ తాగండి లేదా నిద్రపోండి.'), 'bad'); return; }
@@ -1613,6 +1681,7 @@ function sleep() {
   for (const k in S.quests) if (S.quests[k] === 'done') S.quests[k] = 'new';
   S.weather = rollWeather(S.day);
   if (panelOpen) closePanel();
+  if (mini) endFishing();
   if (riding) dismountCart();
   trough.hay.visible = false;
   S.crackersUntil = 0;
@@ -1742,6 +1811,7 @@ function openMenu() {
   playing = false;
   if (panelOpen) { panelOpen = false; $('panel').classList.add('hidden'); }
   rainSound(0);
+  if (mini) endFishing();
   if (document.pointerLockElement) document.exitPointerLock();
   renderMenu();
   $('menu').classList.remove('hidden');
@@ -1817,8 +1887,10 @@ function frame() {
     if (keys.KeyD || keys.ArrowRight) fx += 1;
     fx += joy.x; fz += joy.y;
     const len = Math.hypot(fx, fz);
+    if (mini && mini.cancelOnMove && len > 0.1) endFishing(tr('You put the rod away.', 'గాలం పక్కన పెట్టారు.'));
+    if (mini) mini.update(dt);
     if (riding) driveCart(dt, busy || panelOpen ? 0 : fx, busy || panelOpen ? 0 : fz);
-    else if (len > 0.1 && !busy && !panelOpen) {
+    else if (len > 0.1 && !busy && !panelOpen && !mini) {
       const run = (running || keys.ShiftLeft || keys.ShiftRight) && S.energy > 0;
       const speed = (S.energy <= 0 ? 1.8 : run ? 5.6 : 3.4) * Math.min(1, len);
       move.set(fx / len, 0, fz / len).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(speed * dt);
@@ -1900,6 +1972,7 @@ function frame() {
 /* ============================== BOOT ================================== */
 hydrateIcons();
 S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
+camera.add(rod);
 renderFarm();
 placeBall();
 applyDay();
@@ -1934,6 +2007,7 @@ if (new URLSearchParams(location.search).has('debug')) {
       const tick = () => { if (performance.now() - t0 > secs * 1000) { keys.KeyW = keys.KeyS = keys.KeyA = keys.KeyD = false; res(); } else setTimeout(tick, 50); }; tick(); }); },
     setDay(d) { S.day = d; S.done = {}; applyDay(); renderTasks(); },
     get sparks() { return sparks.length; },
+    get mini() { return mini ? mini.phase : null; },
     refresh() { spawnAnimals(); renderFarm(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
