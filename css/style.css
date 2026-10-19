@@ -117,3 +117,14 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .fest-line .i3d { width: 24px; height: 24px; }
 .privacy { display: inline-block; margin-top: 10px; font-size: 12px; color: #a8c098; }
 .prompt.hot { background: rgba(200, 90, 0, .85); border-color: #ffd25a; animation: pop .25s; font-size: 19px; }
+
+/* Achievements list in the menu */
+.ach-box { text-align: left; margin-top: 12px; max-height: 46vh; overflow-y: auto; background: rgba(0, 0, 0, .25); border-radius: 14px; padding: 8px 10px; }
+.ach-box h3 { margin: 2px 0 8px; color: var(--gold); font-size: 17px; }
+.ach { display: flex; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid rgba(255, 255, 255, .08); opacity: .6; }
+.ach.done { opacity: 1; }
+.ach-e { font-size: 24px; width: 32px; text-align: center; filter: grayscale(1); }
+.ach.done .ach-e { filter: none; }
+.ach b { display: block; font-size: 14px; }
+.ach small { color: #c4d2b8; font-size: 12px; }
+.ach-stats { font-size: 12px; color: #c4d2b8; margin: 8px 0 2px; }
