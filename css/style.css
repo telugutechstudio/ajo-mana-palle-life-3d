@@ -52,6 +52,20 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .progress .bar { height: 14px; border-radius: 8px; background: rgba(0, 0, 0, .5); overflow: hidden; border: 1px solid rgba(255, 255, 255, .3); }
 #progressFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffd25a, #ff9f1c); }
 
+/* Shop / villager dialog */
+.panel { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; width: min(460px, calc(100vw - 24px));
+  background: rgba(22, 32, 20, .94); border: 1px solid rgba(255, 255, 255, .22); border-radius: 20px; padding: 14px 16px; box-shadow: 0 14px 40px rgba(0, 0, 0, .5); animation: pop .25s; }
+.panel-head { display: flex; align-items: center; gap: 10px; font-size: 19px; color: var(--gold); }
+.panel-head .i3d { width: 44px; height: 44px; }
+.panel p { margin: 8px 0 12px; font-size: 16px; line-height: 1.45; color: #f3f0e0; }
+.panel-btns { display: flex; flex-direction: column; gap: 7px; }
+.panel-btns button { text-align: left; padding: 10px 14px; border-radius: 12px; font-weight: 600; font-size: 15px; color: #3a2600;
+  background: linear-gradient(180deg, #ffe07a, #ffb43d); box-shadow: 0 3px 0 #b06200; }
+.panel-btns button:disabled { opacity: .45; cursor: default; }
+.panel-btns button.ghost { background: rgba(255, 255, 255, .12); color: var(--text); box-shadow: none; border: 1px solid rgba(255, 255, 255, .2); }
+.panel-btns kbd { display: inline-block; min-width: 20px; text-align: center; background: rgba(0, 0, 0, .25); border-radius: 5px; margin-right: 8px; font-family: inherit; font-size: 13px; padding: 0 4px; }
+.panel-btns button.ghost kbd { background: rgba(255, 255, 255, .15); }
+
 /* Phone controls */
 .joy { position: fixed; left: 26px; bottom: max(26px, env(safe-area-inset-bottom)); width: 130px; height: 130px; border-radius: 50%; z-index: 6;
   background: rgba(255, 255, 255, .12); border: 2px solid rgba(255, 255, 255, .35); }
