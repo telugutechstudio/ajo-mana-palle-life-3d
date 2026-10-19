@@ -13,7 +13,7 @@ const EMOJI = { water: '💧', wood: '🪵', egg: '🥚', milk: '🥛', cow: '�
   sun: '☀️', moon: '🌙', chicken: '🐔', home: '🏡', shop: '🛒', check: '✅', fire: '🔥', tea: '🌿', leaf: '🍃', speaker: '🔊', rice: '🌾',
   hut: '🛖', tasks: '📋', gear: '⚙️', speech: '💬', bucket: '🪣', axe: '🪓', party: '🎉', pray: '🙏',
   rain: '🌧️', storm: '⛈️', veg: '🍅', seed: '🌱', ball: '⚽', basket: '🧺', umbrella: '☔', oldman: '👴', woman: '👩', boy: '👦', farmer: '🧑‍🌾',
-  brinjal: '🍆', chilli: '🌶️', corn: '🌽', goat: '🐐', buffalo: '🐃', duck: '🦆', gmilk: '🐐', fodder: '🌾', fish: '🐟', bigfish: '🐠', rod: '🎣', ricebag: '🍚', sapling: '🪴', cricket: '🏏', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
+  brinjal: '🍆', chilli: '🌶️', corn: '🌽', goat: '🐐', buffalo: '🐃', duck: '🦆', gmilk: '🐐', fodder: '🌾', fish: '🐟', bigfish: '🐠', rod: '🎣', ricebag: '🍚', sapling: '🪴', sarpanch: '👨‍💼', teacher: '👩‍🏫', postman: '📬', letter: '✉️', chaiwala: '👨‍🍳', school: '🏫', bell: '🔔', trash: '🗑️', trophy: '🏆', cricket: '🏏', kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
 function ico(key, cls = '') {
   return `<span class="i3d ${cls}" data-e="${EMOJI[key] || '❔'}"><img src="icons/${key}.webp" alt="" draggable="false" onerror="this.parentNode.classList.add('fail')"></span>`;
 }
@@ -26,9 +26,13 @@ function defaultState() {
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
-    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ricebag: 0, sapling: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
+    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 0, veg: 0, brinjal: 0, chilli: 0, corn: 0, gmilk: 0, fodder: 0, fish: 0, bigfish: 0, rod: 0, ricebag: 0, sapling: 0, letter: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
     cart: { x: 6.5, z: -14, rot: 0 },
     townDay: 0,
+    story: { step: 0, litter: [false, false, false, false, false] }, // the sarpanch's village development story
+    post: { day: 0, to: null, done: false },
+    teachDay: 0,
+    chaiStall: { day: 0, n: 0 },
     paddy: { stage: 2, watered: false }, // -1 empty, 0 saplings … 4 golden and ready to cut
     cricketDay: 0,
     fishing: { day: 0, n: 0 },
@@ -56,6 +60,9 @@ function load() {
       s.home = Object.assign(d.home, s.home);
       s.animals = Object.assign(d.animals, s.animals);
       s.paddy = Object.assign(d.paddy, s.paddy);
+      s.story = Object.assign(d.story, s.story);
+      s.post = Object.assign(d.post, s.post);
+      s.chaiStall = Object.assign(d.chaiStall, s.chaiStall);
       if (!JSON.parse(raw).seeds) s.seeds.tomato = s.inv.seed || 0; // seeds used to be one item
       s.inv.seed = 0;
       s.farm.forEach(p => { p.crop = p.crop || 'tomato'; });
@@ -659,6 +666,64 @@ villager('ram', { cloth: 0xf8f6ee, hair: 0xd8d8d8, stick: true }, ['రామయ
 villager('lak', { cloth: 0xd0306a, saree: true }, ['లక్ష్మి అక్క', 'Lakshmi'], 'woman', [[-13.4, 6.2], [-10.5, 4.6], [-4.2, 4.8], [-3.6, 8.2]], 1.1);
 villager('chintu', { cloth: 0x2f7fd8, lower: 0x2a3a5a, h: 0.72 }, ['చింటు', 'Chintu'], 'boy', [[4.2, 14], [-6, 13.8], [1.5, 18.5], [10.5, 13.4]], 2.1);
 villager('ven', { cloth: 0x7a9a5a, hair: 0x2a2a2a }, ['వెంకన్న మామ', 'Venkanna'], 'farmer', [[-12.8, -11.5], [-12.8, -24], [-20, -25.4], [-12.8, -24.8]], 0.9);
+villager('sar', { cloth: 0xffffff, lower: 0xffffff, hair: 0x333333 }, ['సర్పంచ్ నారాయణ గారు', 'Sarpanch Narayana'], 'sarpanch', [[3.2, -12], [3.2, -21], [-3.4, -21], [3.2, -21]], 0.8);
+villager('teacher', { cloth: 0x2f6ad0, saree: true }, ['శారద టీచర్', 'Sarada Teacher'], 'teacher', [[-23.5, -26.6], [-16.5, -26.6]], 0.8);
+villager('post', { cloth: 0xb8a070, lower: 0x8a7650 }, ['పోస్ట్‌మ్యాన్ రాజు', 'Postman Raju'], 'postman', [[7.4, -6], [7.4, 26]], 1.3);
+villager('chai', { cloth: 0xf0e8d0, lower: 0x5a5a8a, hair: 0x222222 }, ['చాయ్ అన్న', 'Chai Anna'], 'chaiwala', [[9.2, -12.6], [9.2, -12.65]], 0.3);
+
+// Government school (badi) south-west of the paddy field
+const SCHOOL = house(-20, -31, 0, 0xf2e2a0);
+SCHOOL.children[10].material = mat(0xb5532e);
+const SCHOOL_SPOT = new THREE.Vector3(-20, 0, -26.2);
+{
+  const t = () => textTexture(['ప్రభుత్వ పాఠశాల', 'Govt. School'], 512, 140, '#1f5a2a', '#ffffff');
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.7), new THREE.MeshBasicMaterial({ map: t() }));
+  sign.position.set(0, 2.3, 2.68); SCHOOL.add(sign);
+  document.fonts.load('700 48px "Baloo Tammudu 2"').then(() => { sign.material.map = t(); sign.material.needsUpdate = true; });
+}
+// Things the village gets as the sarpanch's story moves on
+const upgrades = { benches: new THREE.Group(), bell: new THREE.Group(), lamps: new THREE.Group(), award: new THREE.Group(), litter: [] };
+scene.add(upgrades.benches, upgrades.bell, upgrades.lamps, upgrades.award);
+for (const x of [-23, -20, -17]) { box(1.6, 0.08, 0.4, 0x8a5a2a, x, 0.45, -25.2, upgrades.benches); for (const dx of [-0.7, 0.7]) box(0.08, 0.45, 0.35, 0x6b4426, x + dx, 0.22, -25.2, upgrades.benches); }
+for (const x of [-0.9, 0.9]) box(0.12, 2.9, 0.12, 0x8a6a3a, x, 1.45, -21.9, upgrades.bell);
+box(2, 0.12, 0.12, 0x8a6a3a, 0, 2.9, -21.9, upgrades.bell);
+const bellMesh = mesh(new THREE.CylinderGeometry(0.08, 0.28, 0.4, 12, 1, true), 0xd8a832, 0, 2.6, -21.9, upgrades.bell, { side: THREE.DoubleSide });
+const lampHead = new THREE.MeshBasicMaterial({ color: 0x555544 });
+for (const z of [-18, -3.5, 10, 23]) {
+  box(0.1, 4, 0.1, 0x666666, 9.4, 2, z, upgrades.lamps);
+  box(0.8, 0.08, 0.08, 0x666666, 9.05, 3.95, z, upgrades.lamps);
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.2), lampHead); h.position.set(8.7, 3.88, z); upgrades.lamps.add(h);
+  colliders.push({ x: 9.4, z, r: 0.2 });
+}
+const streetLight = new THREE.PointLight(0xfff0c0, 0, 22, 1.4); streetLight.position.set(7, 4, 2); upgrades.lamps.add(streetLight);
+{
+  const t = () => textTexture(['🏆 ఉత్తమ గ్రామం', 'Best Village Award'], 512, 160, '#7a1f1f', '#ffe08a');
+  const b = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.75), new THREE.MeshBasicMaterial({ map: t(), side: THREE.DoubleSide }));
+  b.position.set(2.6, 2.4, 30); b.rotation.y = Math.PI; upgrades.award.add(b);
+  for (const dx of [-1, 1]) box(0.1, 2.6, 0.1, 0x6b4426, 2.6 + dx, 1.3, 30, upgrades.award);
+  document.fonts.load('700 48px "Baloo Tammudu 2"').then(() => { b.material.map = t(); b.material.needsUpdate = true; });
+}
+const LITTER = [[-5, 20.5], [19, 5.5], [-16, -9], [6, -31], [24, 11.5]].map(([x, z]) => {
+  const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+  for (let i = 0; i < 6; i++) box(rand(0.15, 0.35), rand(0.05, 0.15), rand(0.15, 0.3), [0x7a6a5a, 0xd8d8d8, 0x3a7ad8, 0xd83a3a, 0x5a5a4a][i % 5], rand(-0.4, 0.4), 0.05, rand(-0.4, 0.4), g).rotation.y = rand(0, 3);
+  upgrades.litter.push(g);
+  return new THREE.Vector3(x, 0, z);
+});
+function applyStory() {
+  const st = S.story.step;
+  upgrades.benches.visible = st >= 1; upgrades.bell.visible = st >= 2; upgrades.lamps.visible = st >= 3; upgrades.award.visible = st >= 4;
+  upgrades.litter.forEach((g, i) => { g.visible = st === 3 && !S.story.litter[i]; });
+}
+// Tea stall next to the cart stand
+const TEA_STALL = new THREE.Vector3(9.2, 0, -11.4), TEA_SPOT = new THREE.Vector3(9.2, 0, -9.6);
+{
+  box(1.8, 0.95, 0.6, 0x8a5a2a, TEA_STALL.x, 0.48, TEA_STALL.z);
+  for (const dx of [-0.85, 0.85]) box(0.08, 2.3, 0.08, 0x6b4426, TEA_STALL.x + dx, 1.15, TEA_STALL.z - 0.6);
+  const aw = mesh(new THREE.BoxGeometry(2.2, 0.08, 1.6), 0x2fb35a, TEA_STALL.x, 2.3, TEA_STALL.z - 0.3); aw.rotation.x = 0.18;
+  mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.25, 10), 0xbbbbbb, TEA_STALL.x - 0.4, 1.08, TEA_STALL.z);
+  for (let i = 0; i < 4; i++) mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 8), 0xe8f4ff, TEA_STALL.x + 0.1 + i * 0.14, 1.0, TEA_STALL.z + 0.1, scene, { transparent: true, opacity: 0.8 });
+  colliders.push({ x: TEA_STALL.x, z: TEA_STALL.z, r: 1.0 });
+}
 function updateVillagers(dt) {
   const h = S.time / 60, awake = h >= 6 && h < 20.5;
   for (const v of villagers) {
@@ -1294,7 +1359,7 @@ function toast(msg, type = '') {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
   setTimeout(() => t.remove(), 3200);
 }
-const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['ricebag', '🍚'], ['sapling', '🪴'], ['fish', '🐟'], ['bigfish', '🐠'], ['rod', '🎣'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
+const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['brinjal', '🍆'], ['chilli', '🌶️'], ['corn', '🌽'], ['gmilk', '🐐'], ['fodder', '🌾'], ['ricebag', '🍚'], ['sapling', '🪴'], ['letter', '✉️'], ['fish', '🐟'], ['bigfish', '🐠'], ['rod', '🎣'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
 let invShown = '';
 function renderInventory(changed) {
   const count = k => k === 'seed' ? Object.values(S.seeds).reduce((a, b) => a + b, 0) : S.inv[k];
@@ -1490,6 +1555,42 @@ const PROVERBS = [
   ['"Work in the morning, rest under the tree in the afternoon. That is life, babu."', '"పొద్దున పని, మధ్యాహ్నం చెట్టు కింద విశ్రాంతి. అదే జీవితం బాబు."'],
 ];
 let tipIdx = 0;
+const LESSONS = [
+  ['📚 You taught the Telugu alphabet: అ ఆ ఇ ఈ!', '📚 తెలుగు అక్షరాలు నేర్పారు: అ ఆ ఇ ఈ!'],
+  ['📚 You taught counting to 10: ఒకటి, రెండు, మూడు…', '📚 పది వరకు లెక్కలు నేర్పారు: ఒకటి, రెండు, మూడు…'],
+  ['📚 You read a Panchatantra story about the clever rabbit.', '📚 తెలివైన కుందేలు పంచతంత్ర కథ చదివి వినిపించారు.'],
+  ['📚 You taught why we should save water.', '📚 నీళ్ళు ఎందుకు పొదుపు చేయాలో నేర్పారు.'],
+];
+const GOSSIP = [
+  ['"Did you hear? Big fish bite in the pond by the coop. Buy a rod at the kirana shop!"', '"విన్నావా? కోళ్ల గూడు దగ్గర చెరువులో పెద్ద చేపలు పడుతున్నాయి. కిరాణా షాప్‌లో గాలం కొను!"'],
+  ['"Chintu says nobody can score 12 runs off his bowling. Prove him wrong!"', '"తన బౌలింగ్‌లో 12 పరుగులు ఎవరూ కొట్టలేరని చింటు అంటున్నాడు. చూపించు!"'],
+  ['"The town market pays one and a half times. Take your produce in the bullock cart."', '"పట్నం సంతలో ఒకటిన్నర రెట్లు ఇస్తారు. ఎడ్ల బండిలో సరుకు తీసుకెళ్ళు."'],
+  ['"The sarpanch wants to make our village the best in the district. Go and help him."', '"సర్పంచ్ గారు మన ఊరిని జిల్లాలోనే బెస్ట్ చేయాలనుకుంటున్నారు. వెళ్ళి సాయం చెయ్."'],
+  ['"A buffalo gives two milk a day, if you feed her. Straw from the paddy field is free fodder!"', '"మేత వేస్తే బర్రె రోజుకు రెండు పాలు ఇస్తుంది. వరి గడ్డి ఉచిత మేత!"'],
+];
+// The sarpanch's village development story, one step at a time
+function sarpanchTalk(v) {
+  const st = S.story.step, done = () => { S.story.step++; applyStory(); SFX.good(); renderInventory(); renderHud(); save(); openTalk(v); };
+  const T = [
+    { text: ['"Our school has no benches; the children sit on the floor. Bring me 3 logs of firewood for the carpenter."', '"మన బడిలో బెంచీలు లేవు, పిల్లలు నేల మీద కూర్చుంటున్నారు. వడ్రంగికి 3 కట్టెలు తెచ్చివ్వు."'],
+      ok: () => S.inv.wood >= 3, give: ['🪵 Give 3 firewood', '🪵 3 కట్టెలు ఇవ్వు'],
+      done: () => { S.inv.wood -= 3; S.money += 30; toast(tr('🏫 New benches for the school! ₹30 from the panchayat.', '🏫 బడికి కొత్త బెంచీలు! పంచాయతీ నుంచి ₹30.'), 'good'); } },
+    { text: ['"The old temple bell cracked. Will you donate ₹100 for a new one?"', '"గుడి గంట పగిలిపోయింది. కొత్త గంటకు ₹100 విరాళం ఇస్తావా?"'],
+      ok: () => S.money >= 100, give: ['🔔 Donate ₹100', '🔔 ₹100 విరాళం'],
+      done: () => { S.money -= 100; toast(tr('🔔 The new bell rings at the temple! Praying now gives more energy.', '🔔 గుడిలో కొత్త గంట! ఇప్పుడు దండం పెడితే ఎక్కువ శక్తి.'), 'good'); } },
+    { text: ['"We need street lights on the main road. Bring 4 bags of rice from your paddy field to raise the money."', '"మెయిన్ రోడ్డు మీద వీధి దీపాలు కావాలి. డబ్బు కోసం మీ వరి పొలం నుంచి 4 బస్తాల బియ్యం తీసుకురా."'],
+      ok: () => S.inv.ricebag >= 4, give: ['🍚 Give 4 bags of rice', '🍚 4 బస్తాల బియ్యం ఇవ్వు'],
+      done: () => { S.inv.ricebag -= 4; S.money += 50; toast(tr('💡 Street lights on the main road! ₹50 left over for you.', '💡 మెయిన్ రోడ్డుకి వీధి దీపాలు! మిగిలిన ₹50 మీకు.'), 'good'); } },
+    { text: ['"Last step: the inspectors visit soon. Clean up the 5 litter piles around the village and come back."', '"చివరి పని: ఇన్‌స్పెక్టర్లు త్వరలో వస్తారు. ఊరిలో ఉన్న 5 చెత్త కుప్పలు శుభ్రం చేసి రా."'],
+      ok: () => S.story.litter.every(Boolean), give: ['🧹 All clean!', '🧹 అంతా శుభ్రం!'],
+      done: () => { S.money += 200; toast(tr('🏆 Mana Palle is the Best Village of the district! ₹200 award.', '🏆 మన పల్లె జిల్లాలోనే ఉత్తమ గ్రామం! ₹200 బహుమతి.'), 'good'); fade(); } },
+  ];
+  if (st >= T.length) return { text: tr('"Best Village of the district, thanks to you! The whole village is proud."', '"మీ వల్లే జిల్లాలో ఉత్తమ గ్రామం! ఊరంతా గర్వపడుతోంది."'), options: [] };
+  const q = T[st], litterLeft = S.story.litter.filter(x => !x).length;
+  let text = tr(...q.text);
+  if (st === 3) text += tr(` (${litterLeft} left)`, ` (${litterLeft} మిగిలాయి)`);
+  return { text: `<b>${tr(`Village story ${st + 1}/4`, `ఊరి కథ ${st + 1}/4`)}</b><br>${text}`, options: [{ label: tr(...q.give), disabled: !q.ok(), fn: () => { q.done(); done(); } }] };
+}
 function openTalk(v) {
   SFX.talk();
   const name = tr(v.names[1], v.names[0]);
@@ -1535,10 +1636,35 @@ function openTalk(v) {
     } else text = tr('"Thanks anna! Want to play cricket?"', '"థాంక్స్ అన్నా! క్రికెట్ ఆడదామా?"');
     if (S.cricketDay !== S.day && S.time < 18 * 60) options.push({ label: tr('🏏 Play cricket (score 12 in 6 balls)', '🏏 క్రికెట్ ఆడు (6 బాల్స్‌లో 12 పరుగులు)'), fn: () => { closePanel(); startCricket(); } });
     else if (S.cricketDay === S.day) text += tr(' "Good game today!"', ' "ఈ రోజు మంచి ఆట!"');
+  } else if (v.id === 'sar') ({ text, options } = sarpanchTalk(v));
+  else if (v.id === 'teacher') {
+    text = tr('"Namaste! The children love visitors. Come to the school front between 9 AM and 4 PM and help me teach. The school pays ₹20."', '"నమస్తే! పిల్లలకు కొత్తవాళ్ళు వస్తే ఇష్టం. ఉ. 9 – సా. 4 మధ్య బడి ముందుకు వచ్చి పాఠం చెప్పడంలో సాయం చేయండి. బడి ₹20 ఇస్తుంది."');
+    if (S.teachDay === S.day) text = tr('"Thank you for today\'s class! The children are still talking about it."', '"ఈ రోజు క్లాస్‌కి థాంక్స్! పిల్లలు ఇంకా దాని గురించే మాట్లాడుకుంటున్నారు."');
+  } else if (v.id === 'post') {
+    const P = S.post;
+    if (P.day !== S.day) {
+      text = tr('"Namaskaram! I have one letter left today. Can you deliver it for me? ₹15 for your trouble."', '"నమస్కారం! ఈ రోజు ఒక ఉత్తరం మిగిలింది. మీరు ఇచ్చి వస్తారా? ₹15 ఇస్తాను."');
+      options = [{ label: tr('✉️ Take the letter', '✉️ ఉత్తరం తీసుకో'), fn: () => {
+        const who = villagers.filter(o => !['post', 'chintu'].includes(o.id)); const to = who[Math.floor(Math.random() * who.length)];
+        Object.assign(P, { day: S.day, to: to.id, done: false }); S.inv.letter = 1; renderInventory('letter');
+        toast(tr(`✉️ Deliver the letter to ${to.names[1]}`, `✉️ ఉత్తరం ${to.names[0]}కి ఇవ్వండి`)); openTalk(v); } }];
+    } else if (!P.done) {
+      const to = villagers.find(o => o.id === P.to);
+      text = tr(`"The letter is for ${to.names[1]}. Thank you!"`, `"ఉత్తరం ${to.names[0]}కి. థాంక్యూ!"`);
+    } else text = tr('"All letters delivered. See you tomorrow!"', '"అన్ని ఉత్తరాలు అందాయి. రేపు కలుద్దాం!"');
+  } else if (v.id === 'chai') {
+    const C = S.chaiStall; if (C.day !== S.day) Object.assign(C, { day: S.day, n: 0 });
+    text = tr(...GOSSIP[(S.day + C.n) % GOSSIP.length]);
+    options = [{ label: C.n >= 3 ? tr('🍵 Stall is out of milk for today', '🍵 ఈ రోజుకి పాలు అయిపోయాయి') : tr('🍵 One chai · ₹10 (energy +30)', '🍵 ఒక చాయ్ · ₹10 (శక్తి +30)'), disabled: C.n >= 3 || S.money < 10,
+      fn: () => { S.money -= 10; C.n++; S.energy = Math.min(100, S.energy + 30); SFX.good(); renderHud(); toast(tr('🍵 Hot chai! Energy +30', '🍵 వేడి చాయ్! శక్తి +30'), 'good'); openTalk(v); } }];
   } else {
     text = tr(...FARM_TIPS[tipIdx % FARM_TIPS.length]);
     options = [{ label: tr('Another tip', 'ఇంకో సలహా'), fn: () => { tipIdx++; openTalk(v); } }];
   }
+  // Anyone can be the one the postman's letter is for
+  if (S.post.to === v.id && S.inv.letter && S.post.day === S.day) options.unshift({ label: tr('✉️ Give the letter', '✉️ ఉత్తరం ఇవ్వు'), fn: () => {
+    S.inv.letter = 0; S.post.done = true; S.money += 15; SFX.coin(); renderInventory(); renderHud();
+    toast(tr('✉️ Letter delivered! ₹15 from the postman.', '✉️ ఉత్తరం అందింది! పోస్ట్‌మ్యాన్ నుంచి ₹15.'), 'good'); openTalk(v); } });
   openPanel({ icon: v.icon, title: name, text, options });
 }
 
@@ -1684,14 +1810,21 @@ const spots = [
     need: () => !S.inv.rod ? tr('Buy a fishing rod at the shop', 'షాప్‌లో గాలం కొనండి')
       : (S.fishing.day === S.day && S.fishing.n >= 6) ? tr('The fish are resting. Come back tomorrow', 'చేపలు విశ్రాంతి తీసుకుంటున్నాయి. రేపు రండి') : '',
     time: 0.4, done: () => { if (S.fishing.day !== S.day) S.fishing = { day: S.day, n: 0 }; S.energy = Math.max(0, S.energy - 2); startFishing(); } },
+  { at: SCHOOL_SPOT, r: 2.6, label: () => tr('Help teach the class', 'పాఠం చెప్పడంలో సాయం'),
+    need: () => S.teachDay === S.day ? tr('Class is over for today', 'ఈ రోజు క్లాస్ అయిపోయింది') : (S.time < 9 * 60 || S.time > 16 * 60) ? tr('School is open 9 AM – 4 PM', 'బడి ఉ. 9 – సా. 4') : '',
+    time: 4, start: SFX.bell,
+    done: () => { S.teachDay = S.day; S.money += 20; SFX.good(); renderHud(); toast(tr(...LESSONS[S.day % LESSONS.length]) + tr(' ₹20 from the school.', ' బడి నుంచి ₹20.'), 'good'); } },
+  { at: TEA_SPOT, r: 2.2, label: () => tr('Tea stall', 'టీ కొట్టు'), need: () => '', time: 0.2, done: () => openTalk(villagers.find(v => v.id === 'chai')) },
+  ...LITTER.map((at, i) => ({ at, r: 1.8, hidden: () => !upgrades.litter[i].visible, label: () => tr('Clean up the litter', 'చెత్త ఎత్తు'), need: () => '', time: 2, start: SFX.chop,
+    done: () => { S.story.litter[i] = true; applyStory(); const left = S.story.litter.filter(x => !x).length; toast(left ? tr(`🧹 Clean! ${left} more to go`, `🧹 శుభ్రం! ఇంకా ${left}`) : tr('🧹 All clean! Go tell the sarpanch.', '🧹 అంతా శుభ్రం! సర్పంచ్ గారికి చెప్పండి.'), 'good'); } })),
   { at: BALL_AT, r: 1.8, hidden: () => !ballMesh.visible, label: () => tr('Pick up the ball', 'బంతి తీసుకో'), need: () => '', time: 0.4,
     done: () => { S.inv.ball = 1; ballMesh.visible = false; SFX.good(); renderInventory('ball'); toast(tr('⚽ Found it! Take it to Chintu.', '⚽ దొరికింది! చింటుకి ఇవ్వండి.'), 'good'); } },
   ...villagers.map(v => ({ at: v.g.position, r: 2.6, hidden: () => !v.g.visible, label: () => tr(`Talk to ${v.names[1]}`, `${v.names[0]}తో మాట్లాడు`),
     need: () => '', time: 0.2, done: () => openTalk(v) })),
-  { at: TEMPLE_FRONT, r: 3.2, label: () => tr('Pray', 'దండం పెట్టు'),
+  { at: TEMPLE_FRONT, r: 3.2, label: () => tr('Pray', 'దండం పెట్టు'), tick: () => { if (S.story.step >= 2) { bellMesh.rotation.z = Math.sin(performance.now() / 80) * 0.3; tone(880, 0.6, 'sine', 0.04); } },
     need: () => S.prayed ? tr('Already prayed today', 'ఈ రోజు దండం పెట్టారు') : '',
     time: 2.5, start: SFX.bell,
-    done: () => { S.prayed = true; S.energy = Math.min(100, S.energy + 15); completeTask('pray'); toast(tr('🙏 Blessed! Energy +15', '🙏 దేవుడి దీవెన! శక్తి +15'), 'good'); } },
+    done: () => { const e = S.story.step >= 2 ? 25 : 15; S.prayed = true; S.energy = Math.min(100, S.energy + e); completeTask('pray'); toast(tr(`🙏 Blessed! Energy +${e}`, `🙏 దేవుడి దీవెన! శక్తి +${e}`), 'good'); } },
   { at: new THREE.Vector3(0, 0, 3.3), r: 1.9, label: () => tr('Home', 'ఇల్లు'), need: () => '', time: 0.2, done: () => openHome() },
 ];
 // Ugadi pachadi takes over the chulha while you hold the items, so it goes first
@@ -2093,6 +2226,7 @@ function frame() {
   cart.tails.forEach((t, i) => { t.rotation.z = Math.sin(performance.now() / 500 + i) * 0.25; });
   updateFestivals(dt);
   updateHome(dt);
+  if (upgrades.lamps.visible) { const hh = S.time / 60, on = hh > 18.3 || hh < 5.8; lampHead.color.set(on ? 0xfff2b0 : 0x555544); streetLight.intensity = on ? 1.5 : 0; }
   updateAnimals(dt);
   updateWeather(dt);
   updateRain(dt);
@@ -2109,6 +2243,7 @@ function frame() {
 hydrateIcons();
 S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
 camera.add(rod, bat);
+applyStory();
 renderFarm();
 renderPaddy();
 placeBall();
@@ -2146,7 +2281,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get sparks() { return sparks.length; },
     get mini() { return mini ? mini.phase : null; },
     get miniState() { return mini ? { phase: mini.phase, t: mini.t, T: mini.T, ball: mini.ball, runs: mini.runs, swung: mini.swung } : null; },
-    refresh() { spawnAnimals(); renderFarm(); renderPaddy(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
+    refresh() { applyStory(); spawnAnimals(); renderFarm(); renderPaddy(); renderInventory(); applyDay(); applyHome(); renderTasks(); renderHud(); },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
 }
