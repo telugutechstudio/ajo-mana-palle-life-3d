@@ -1,0 +1,14 @@
+# Netlify deploy settings: plain static site, no build step.
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
+# Always check for a new service worker so game updates reach installed apps.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

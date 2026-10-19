@@ -6,6 +6,12 @@
   <title>Mana Palle Life 3D – Indian Village Life Game | మన పల్లె లైఫ్ 3D</title>
   <meta name="description" content="Live a day in an Indian village in 3D: fetch water from the well, make chai on the chulha, collect eggs, milk the cow and sell at the kirana shop. Telugu & English.">
   <meta name="theme-color" content="#2b5d2b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta property="og:title" content="Mana Palle Life 3D – Telugu village life game">
+  <meta property="og:description" content="Fetch water, make chai, grow tomatoes, ride the bullock cart and celebrate Sankranti in a 3D Telugu village. Free, in Telugu & English.">
+  <meta property="og:image" content="icons/icon-512.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+Tammudu+2:wght@500;600;700&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
@@ -55,9 +61,11 @@
       <button class="small-btn" id="resetBtn" data-act="reset"></button>
     </div>
     <div class="controls" id="controlsHelp"></div>
+    <a class="privacy" href="privacy.html">Privacy</a>
   </div>
 </div>
 
 <script type="module" src="js/main.js"></script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 </body>
 </html>

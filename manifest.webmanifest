@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Mana Palle Life 3D",
+  "short_name": "Mana Palle",
+  "description": "Free 3D Telugu village life game: fetch water, make chai, grow tomatoes, ride the bullock cart and celebrate Sankranti, Ugadi and Deepavali.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#2b5d2b",
+  "theme_color": "#2b5d2b",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "lang": "te",
+  "dir": "ltr",
+  "categories": ["games", "entertainment"]
+}
