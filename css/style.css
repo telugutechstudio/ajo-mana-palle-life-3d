@@ -113,3 +113,5 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .pill .bar { width: 60px; }
   .prompt { font-size: 14px; bottom: 34%; }
 }
+.fest-line { display: flex; align-items: center; gap: 6px; margin: -2px 0 6px; font-weight: 700; color: #ffd2a0; }
+.fest-line .i3d { width: 24px; height: 24px; }

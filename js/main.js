@@ -12,7 +12,8 @@ const $ = id => document.getElementById(id);
 const EMOJI = { water: '💧', wood: '🪵', egg: '🥚', milk: '🥛', cow: '🐮', temple: '🛕', bed: '🛏️', chai: '🍵', coin: '🪙', energy: '⚡',
   sun: '☀️', moon: '🌙', chicken: '🐔', home: '🏡', shop: '🛒', check: '✅', fire: '🔥', tea: '🌿', leaf: '🍃', speaker: '🔊', rice: '🌾',
   hut: '🛖', tasks: '📋', gear: '⚙️', speech: '💬', bucket: '🪣', axe: '🪓', party: '🎉', pray: '🙏',
-  rain: '🌧️', storm: '⛈️', veg: '🍅', seed: '🌱', ball: '⚽', basket: '🧺', umbrella: '☔', oldman: '👴', woman: '👩', boy: '👦', farmer: '🧑‍🌾' };
+  rain: '🌧️', storm: '⛈️', veg: '🍅', seed: '🌱', ball: '⚽', basket: '🧺', umbrella: '☔', oldman: '👴', woman: '👩', boy: '👦', farmer: '🧑‍🌾',
+  kite: '🪁', fireworks: '🎆', mango: '🥭', diya: '🪔', elephant: '🐘', ox: '🐂', cold: '❄️', bowl: '🥣', flower: '🌼', sparkle: '✨' };
 function ico(key, cls = '') {
   return `<span class="i3d ${cls}" data-e="${EMOJI[key] || '❔'}"><img src="icons/${key}.webp" alt="" draggable="false" onerror="this.parentNode.classList.add('fail')"></span>`;
 }
@@ -25,7 +26,9 @@ function defaultState() {
     sound: true,
     day: 1, time: 6.5 * 60, // minutes since midnight
     energy: 100, money: 20,
-    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 6, veg: 0, ball: 0 },
+    inv: { water: 0, wood: 0, egg: 0, milk: 0, tea: 2, chai: 0, seed: 6, veg: 0, ball: 0, kite: 0, fireworks: 0, bowl: 0, flower: 0 },
+    cart: { x: 6.5, z: -14, rot: 0 },
+    townDay: 0,
     stove: { state: 'empty', until: 0 }, // empty | cooking | ready
     eggsLeft: [true, true, true],
     milked: false, prayed: false,
@@ -53,9 +56,33 @@ let resetting = false;
 function save() {
   if (resetting) return; // don't write the old game back while starting a new one
   S.pos = { x: player.position.x, z: player.position.z, yaw };
+  S.cart = { x: cart.g.position.x, z: cart.g.position.z, rot: cart.g.rotation.y };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage blocked */ }
 }
 S = load();
+
+/* ============================== CALENDAR ============================== */
+// A village year is 21 days: 7 of winter, 7 of summer, 7 of monsoon, with four festivals
+const YEAR = 21;
+const SEASONS = [
+  { id: 'winter', icon: 'cold', name: ['Winter', 'చలికాలం'], rain: 0.12, ground: 0xe2ebe0, paddy: 0xd8b84a },
+  { id: 'summer', icon: 'mango', name: ['Summer', 'ఎండాకాలం'], rain: 0.08, ground: 0xecd296, paddy: 0xa8a060 },
+  { id: 'monsoon', icon: 'umbrella', name: ['Monsoon', 'వర్షాకాలం'], rain: 0.6, ground: 0xffffff, paddy: 0x6fbf3a },
+];
+function dayOfYear(day = S.day) { return ((day - 1) % YEAR) + 1; }
+function season(day = S.day) { return SEASONS[Math.floor((dayOfYear(day) - 1) / 7)]; }
+const FESTIVALS = {
+  2: { id: 'deepavali', icon: 'diya', emoji: '🪔', name: ['Deepavali', 'దీపావళి'], item: 'fireworks', price: 20,
+    itemName: ['Crackers', 'టపాకాయలు'], task: ['Burst crackers at home after 6 PM', 'సాయంత్రం 6 తర్వాత ఇంటి దగ్గర టపాకాయలు కాల్చాలి'] },
+  6: { id: 'sankranti', icon: 'kite', emoji: '🪁', name: ['Sankranti', 'సంక్రాంతి'], item: 'kite', price: 15,
+    itemName: ['Kite', 'గాలిపటం'], task: ['Fly a kite on the town road', 'పట్నం రోడ్డు మీద గాలిపటం ఎగరేయాలి'] },
+  9: { id: 'ugadi', icon: 'bowl', emoji: '🥭', name: ['Ugadi', 'ఉగాది'], item: 'bowl', price: 10,
+    itemName: ['Pachadi items', 'పచ్చడి సామాను'], task: ['Make Ugadi pachadi on the chulha', 'పొయ్యి దగ్గర ఉగాది పచ్చడి చేయాలి'] },
+  17: { id: 'chavithi', icon: 'elephant', emoji: '🐘', name: ['Vinayaka Chavithi', 'వినాయక చవితి'], item: 'flower', price: 10,
+    itemName: ['Pooja items', 'పూజ సామాను'], task: ['Do pooja at the Ganesha pandal', 'వినాయకుడి పందిరిలో పూజ చేయాలి'] },
+};
+function festival(day = S.day) { return FESTIVALS[dayOfYear(day)] || null; }
+const isFest = id => festival()?.id === id;
 
 /* ============================== RENDERER ============================== */
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -138,9 +165,12 @@ function updateSky() {
   const c = skyColor(h);
   if (wet > 0) c.lerp(tmpB.set(0x66727c).multiplyScalar(0.25 + day * 0.75), wet * 0.8);
   if (flash > 0) c.lerp(tmpB.set(0xe8eeff), Math.min(1, flash * 3));
+  // Winter mornings are misty (manchu)
+  const mist = season().id === 'winter' && h > 4 ? Math.max(0, Math.min(1, (9.5 - h) / 2.5)) : 0;
+  if (mist > 0) c.lerp(tmpB.set(0xdfe6ea).multiplyScalar(0.4 + day * 0.6), mist * 0.5);
   scene.background.copy(c);
   scene.fog.color.copy(c);
-  scene.fog.near = 35 - wet * 22; scene.fog.far = 110 - wet * 55;
+  scene.fog.near = 35 - Math.max(wet * 22, mist * 28); scene.fog.far = 110 - Math.max(wet * 55, mist * 66);
   cloudMat.color.set(0xffffff).lerp(tmpB.set(0x6a727a), wet * 0.85);
   cloudMat.emissive.copy(cloudMat.color).multiplyScalar(0.05 + day * 0.5 * (1 - wet * 0.6)); // clouds stay soft and bright by day
   stars.material.opacity = Math.max(0, 1 - day * 4) * (h < 6 || h > 18 ? 1 : 0.4) * (1 - wet);
@@ -178,6 +208,8 @@ let seed = 11;
 function srand(a, b) { seed = (seed * 16807) % 2147483647; return a + (seed / 2147483647) * (b - a); }
 
 /* ============================== GROUND ================================ */
+const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true }); // tinted by the season
+const paddyMat = new THREE.MeshLambertMaterial({ color: 0x6fbf3a });
 {
   const g = new THREE.PlaneGeometry(240, 240, 80, 80);
   g.rotateX(-Math.PI / 2);
@@ -193,7 +225,7 @@ function srand(a, b) { seed = (seed * 16807) % 2147483647; return a + (seed / 21
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.computeVertexNormals();
-  const ground = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const ground = new THREE.Mesh(g, groundMat);
   ground.receiveShadow = true;
   scene.add(ground);
   // Mud paths
@@ -214,8 +246,10 @@ function thatchedRoof(w, d, h, x, y, z, parent) {
   r.scale.set(w / Math.max(w, d), 1, d / Math.max(w, d));
   return r;
 }
+const houses = [];
 function house(x, z, rot, wall = 0xd89a63) {
   const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+  houses.push(g);
   box(6, 2.6, 0.3, wall, 0, 1.3, -2.5, g);            // back
   box(0.3, 2.6, 5, wall, -3, 1.3, 0, g);              // left
   box(0.3, 2.6, 5, wall, 3, 1.3, 0, g);               // right
@@ -235,7 +269,7 @@ function house(x, z, rot, wall = 0xd89a63) {
   return g;
 }
 // Muggu (rangoli) drawn on a canvas
-function muggu(x, z, size = 2.4) {
+function muggu(x, z, size = 2.4, parent = scene) {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const k = c.getContext('2d');
   k.translate(128, 128);
@@ -254,7 +288,7 @@ function muggu(x, z, size = 2.4) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.CircleGeometry(size / 2, 32), new THREE.MeshLambertMaterial({ map: t, transparent: true }));
   m.rotation.x = -Math.PI / 2; m.position.set(x, 0.04, z); m.receiveShadow = true;
-  scene.add(m);
+  parent.add(m);
 }
 
 // Player's home
@@ -303,12 +337,12 @@ const stove = { pot: null, fire: null, light: null };
   colliders.push({ x: CHULHA.x, z: CHULHA.z, r: 0.75 });
   // Firewood pile
   for (let i = 0; i < 9; i++) {
-    const l = mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.3, 7), 0x7a4a26, 7.4, 0.14 + Math.floor(i / 3) * 0.24, -1.3 + (i % 3) * 0.26 + (Math.floor(i / 3) % 2) * 0.12);
+    const l = mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.3, 7), 0x7a4a26, 8.6, 0.14 + Math.floor(i / 3) * 0.24, -1.3 + (i % 3) * 0.26 + (Math.floor(i / 3) % 2) * 0.12);
     l.rotation.x = Math.PI / 2;
   }
-  colliders.push({ x: 7.4, z: -1, r: 0.9 });
+  colliders.push({ x: 8.6, z: -1, r: 0.9 });
 }
-const WOODPILE = new THREE.Vector3(7.4, 0, -1);
+const WOODPILE = new THREE.Vector3(8.6, 0, -1);
 
 // Smoke & steam particles
 const puffs = [];
@@ -366,6 +400,13 @@ const cow = new THREE.Group();
   box(0.5, 0.4, 0.82, b, -0.3, 1.2, 0, cow);
   for (const [lx, lz] of [[0.65, 0.28], [0.65, -0.28], [-0.65, 0.28], [-0.65, -0.28]]) box(0.16, 0.65, 0.16, w, lx, 0.32, lz, cow);
   box(0.06, 0.7, 0.06, w, -0.95, 0.85, 0, cow).rotation.z = 0.3;
+  // Sankranti decorations: painted cloth, marigold garland and coloured horn tips
+  const deco = new THREE.Group(); cow.add(deco); deco.visible = false;
+  box(1.0, 0.5, 0.86, 0xc8202a, -0.1, 1.28, 0, deco);
+  box(1.02, 0.08, 0.88, 0xffc83d, -0.1, 1.52, 0, deco);
+  mesh(new THREE.TorusGeometry(0.3, 0.07, 6, 14), 0xff8a1a, 0.85, 1.2, 0, deco).rotation.y = Math.PI / 2;
+  mesh(new THREE.SphereGeometry(0.06, 6, 5), 0x2fb35a, 1.0, 1.76, 0.21, deco); mesh(new THREE.SphereGeometry(0.06, 6, 5), 0x2fb35a, 1.0, 1.76, -0.21, deco);
+  cow.userData.deco = deco;
   cow.position.copy(COW); cow.rotation.y = -0.6;
   scene.add(cow);
   box(0.15, 1.2, 0.15, 0x6b4426, COW.x + 1.8, 0.6, COW.z + 1);
@@ -430,7 +471,7 @@ const TEMPLE_FRONT = new THREE.Vector3(TEMPLE.x, 0, TEMPLE.z + 4.6);
   for (const [w, d, x, z] of [[fw + 0.6, 0.6, fx, fz - fd / 2], [fw + 0.6, 0.6, fx, fz + fd / 2], [0.6, fd, fx - fw / 2, fz], [0.6, fd, fx + fw / 2, fz]]) box(w, 0.35, d, 0x8a6a3a, x, 0.17, z);
   const geo = new THREE.ConeGeometry(0.09, 0.6, 4);
   geo.translate(0, 0.3, 0);
-  const rows = 22, cols = 30, inst = new THREE.InstancedMesh(geo, mat(0x6fbf3a), rows * cols);
+  const rows = 22, cols = 30, inst = new THREE.InstancedMesh(geo, paddyMat, rows * cols);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
   let n = 0;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -615,6 +656,212 @@ function updateRain(dt) {
   rainGeo.attributes.position.needsUpdate = true;
 }
 
+// Bullock cart (yedla bandi): faces +z, the driver sits at the front of the bed
+const cart = { g: new THREE.Group(), wheels: [], legs: [], tails: [], phase: 0, speed: 0 };
+{
+  const g = cart.g, wood = 0x8a5a30;
+  scene.add(g);
+  box(1.5, 0.12, 2.2, wood, 0, 0.95, 0, g);
+  box(0.08, 0.35, 2.2, wood, -0.72, 1.15, 0, g); box(0.08, 0.35, 2.2, wood, 0.72, 1.15, 0, g);
+  box(1.5, 0.35, 0.08, wood, 0, 1.15, -1.08, g);
+  const hood = mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.3, 14, 1, true, Math.PI / 2, Math.PI), 0xd8c49a, 0, 1.15, -0.45, g, { side: THREE.DoubleSide });
+  hood.rotation.x = Math.PI / 2;
+  box(1.9, 0.08, 0.08, 0x5a3418, 0, 0.72, -0.2, g);
+  for (const sx of [-0.9, 0.9]) {
+    const w = new THREE.Group(); w.position.set(sx, 0.72, -0.2); g.add(w);
+    mesh(new THREE.TorusGeometry(0.68, 0.06, 6, 20), 0x5a3418, 0, 0, 0, w).rotation.y = Math.PI / 2;
+    for (let k = 0; k < 4; k++) box(0.05, 1.32, 0.06, 0x7a4a26, 0, 0, 0, w).rotation.x = k * Math.PI / 4;
+    cart.wheels.push(w);
+  }
+  box(0.1, 0.1, 2.6, wood, 0, 0.95, 2.3, g);   // pole
+  box(1.7, 0.1, 0.1, wood, 0, 1.38, 3.1, g);   // yoke
+  for (const bx of [-0.55, 0.55]) {
+    const b = new THREE.Group(); b.position.set(bx, 0, 3.1); g.add(b);
+    const white = 0xeeeae0;
+    box(0.55, 0.62, 1.4, white, 0, 0.98, 0, b);
+    box(0.34, 0.3, 0.4, white, 0, 1.38, 0.38, b);              // hump
+    box(0.32, 0.38, 0.48, white, 0, 1.12, 0.9, b);             // head
+    box(0.24, 0.2, 0.16, 0xd8a890, 0, 1.02, 1.14, b);          // nose
+    for (const hx of [-0.12, 0.12]) mesh(new THREE.ConeGeometry(0.04, 0.32, 5), bx < 0 ? 0xd02a2a : 0x2a6ad0, hx, 1.42, 0.85, b).rotation.z = hx * 3;
+    for (const [lx, lz] of [[-0.18, 0.5], [0.18, 0.5], [-0.18, -0.5], [0.18, -0.5]]) {
+      const p = new THREE.Group(); p.position.set(lx, 0.68, lz); b.add(p);
+      box(0.13, 0.68, 0.13, white, 0, -0.34, 0, p);
+      cart.legs.push(p);
+    }
+    const tail = new THREE.Group(); tail.position.set(0, 1.2, -0.7); b.add(tail);
+    box(0.05, 0.6, 0.05, white, 0, -0.3, 0, tail);
+    cart.tails.push(tail);
+    for (const sx of [-0.2, 0.2]) mesh(new THREE.SphereGeometry(0.05, 6, 4), 0xffc83d, sx, 0.98, 0.72, b); // bells
+  }
+  g.position.set(S.cart.x, 0, S.cart.z); g.rotation.y = S.cart.rot;
+}
+// Two circles cover the cart and the bulls
+function cartCircles(x, z, rot) {
+  const fx = Math.sin(rot), fz = Math.cos(rot);
+  return [[x - fx * 0.1, z - fz * 0.1, 0.95], [x + fx * 3.1, z + fz * 3.1, 0.8]];
+}
+function cartBlocked(x, z, rot) {
+  for (const [cx, cz, r] of cartCircles(x, z, rot)) {
+    if (Math.hypot(cx, cz) > 57) return true;
+    for (const c of colliders) if (Math.hypot(cx - c.x, cz - c.z) < c.r + r) return true;
+    for (const v of villagers) if (v.g.visible && Math.hypot(cx - v.g.position.x, cz - v.g.position.z) < r + 0.4) return true;
+  }
+  return false;
+}
+
+// Road sign to the town market at the north end of the main road
+const TOWN = new THREE.Vector3(6, 0, 31);
+{
+  box(0.12, 2.4, 0.12, 0x6b4426, 9, 1.2, 32);
+  const t = () => textTexture(['పట్నం సంత →', 'Town market'], 512, 160, '#2f6a2f', '#ffffff');
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.6), new THREE.MeshBasicMaterial({ map: t(), side: THREE.DoubleSide }));
+  sign.position.set(9, 2.2, 32); sign.rotation.y = -Math.PI / 2; scene.add(sign);
+  document.fonts.load('700 48px "Baloo Tammudu 2"').then(() => { sign.material.map = t(); sign.material.needsUpdate = true; });
+  colliders.push({ x: 9, z: 32, r: 0.25 });
+}
+
+// Festival decorations, shown only on festival days
+const fest = { all: new THREE.Group(), muggulu: new THREE.Group(), kites: new THREE.Group(), pandal: new THREE.Group(), diyas: new THREE.Group(), flames: [] };
+scene.add(fest.all, fest.muggulu, fest.kites, fest.pandal, fest.diyas);
+// Mango-leaf torans with marigolds over every door
+for (const h of houses) {
+  const t = new THREE.Group(); h.add(t); fest.all.add(t);
+  for (let i = 0; i < 11; i++) {
+    const x = -1.1 + i * 0.22;
+    if (i % 2) mesh(new THREE.SphereGeometry(0.07, 6, 5), 0xff9a1a, x, 2.5, 2.72, t);
+    else mesh(new THREE.ConeGeometry(0.08, 0.32, 4), 0x2f8a2a, x, 2.42, 2.72, t).rotation.x = Math.PI;
+  }
+  box(2.3, 0.03, 0.03, 0x6b4426, 0, 2.6, 2.72, t);
+}
+// Paper flag strings across the main road
+for (const z of [-6, 6, 19, 27]) {
+  box(0.1, 3.8, 0.1, 0x6b4426, 3.5, 1.9, z, fest.all); box(0.1, 3.8, 0.1, 0x6b4426, 8.5, 1.9, z, fest.all);
+  for (let i = 0; i < 12; i++) {
+    const x = 3.75 + i * 0.42, sag = Math.sin(i / 11 * Math.PI) * 0.45;
+    const f = mesh(new THREE.ConeGeometry(0.16, 0.34, 3), [0xff4f6a, 0xffc83d, 0x3ccf6e, 0x4da3ff, 0xff8a1a][i % 5], x, 3.55 - sag, z, fest.all);
+    f.rotation.x = Math.PI; f.castShadow = false;
+  }
+}
+// Extra muggulu in front of the houses and on the road
+[[-12, 17.6], [14.4, 19.4], [6, 9], [6, -3], [0, 10]].forEach(([x, z]) => muggu(x, z, 2.2, fest.muggulu));
+// Kites over the village (Sankranti)
+const kiteGeo = new THREE.PlaneGeometry(1, 1);
+function makeKite(color, parent) {
+  const k = new THREE.Group(); parent.add(k);
+  const m = new THREE.Mesh(kiteGeo, mat(color, { side: THREE.DoubleSide })); m.rotation.z = Math.PI / 4; m.scale.set(1, 1.3, 1); k.add(m);
+  const tail = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 1.6), mat(0xffffff, { side: THREE.DoubleSide })); tail.position.y = -1.4; k.add(tail);
+  return k;
+}
+for (let i = 0; i < 12; i++) {
+  const k = makeKite([0xff4f6a, 0xffc83d, 0x3ccf6e, 0x4da3ff, 0xff8a1a, 0xb04fff][i % 6], fest.kites);
+  k.position.set(rand(-35, 35), rand(14, 26), rand(-35, 35)); k.userData.p = rand(0, 6);
+}
+const KITE_AT = new THREE.Vector3(5.5, 0, 22);
+const myKite = makeKite(0xff2f8a, scene);
+myKite.position.set(KITE_AT.x + 7, 17, KITE_AT.z + 9); myKite.scale.setScalar(1.4); myKite.visible = false;
+const kiteString = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(KITE_AT.x, 1.2, KITE_AT.z), myKite.position]), new THREE.LineBasicMaterial({ color: 0xffffff }));
+scene.add(kiteString); kiteString.visible = false;
+// Ganesha pandal (Vinayaka Chavithi)
+const GANESHA = new THREE.Vector3(18, 0, -8);
+const GANESHA_FRONT = new THREE.Vector3(GANESHA.x - 2.6, 0, GANESHA.z);
+{
+  const g = fest.pandal; g.position.copy(GANESHA); g.rotation.y = -Math.PI / 2;
+  for (const [px, pz] of [[-1.4, -1.2], [1.4, -1.2], [-1.4, 1.2], [1.4, 1.2]]) box(0.1, 2.7, 0.1, 0xc8a860, px, 1.35, pz, g);
+  for (let i = 0; i < 6; i++) box(0.53, 0.12, 2.9, i % 2 ? 0xffc83d : 0xe8443a, -1.32 + i * 0.53, 2.75, 0, g).castShadow = false;
+  box(1.8, 0.5, 1.3, 0xffffff, 0, 0.25, -0.2, g);
+  const skin = 0xffc4a0, y0 = 0.5;
+  mesh(new THREE.SphereGeometry(0.42, 14, 12), skin, 0, y0 + 0.45, -0.2, g).scale.y = 1.05;
+  mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.3, 14), 0xffd23d, 0, y0 + 0.18, -0.2, g);
+  mesh(new THREE.SphereGeometry(0.3, 14, 12), skin, 0, y0 + 1.05, -0.15, g);
+  for (const ex of [-0.3, 0.3]) mesh(new THREE.SphereGeometry(0.2, 10, 8), skin, ex, y0 + 1.08, -0.2, g).scale.set(0.35, 1, 1);
+  const trunk = mesh(new THREE.CylinderGeometry(0.05, 0.09, 0.5, 8), skin, 0.05, y0 + 0.82, 0.12, g); trunk.rotation.x = 0.35; trunk.rotation.z = -0.3;
+  mesh(new THREE.ConeGeometry(0.18, 0.4, 8), 0xffc83d, 0, y0 + 1.45, -0.15, g);
+  for (const ex of [-0.1, 0.1]) mesh(new THREE.SphereGeometry(0.035, 6, 4), 0x111111, ex, y0 + 1.12, 0.12, g);
+  for (let i = 0; i < 9; i++) mesh(new THREE.SphereGeometry(0.07, 6, 5), i % 2 ? 0xff8a1a : 0xffd23d, -0.8 + i * 0.2, 0.55, 0.5, g);
+}
+const pandalCollider = { x: GANESHA.x, z: GANESHA.z, r: -9 };
+colliders.push(pandalCollider);
+// Diyas along the home step and around the muggu (Deepavali)
+const diyaLight = new THREE.PointLight(0xffa040, 0, 12, 1.6); diyaLight.position.set(0, 1, 4.8); scene.add(diyaLight);
+{
+  const spots = [];
+  for (let i = 0; i < 9; i++) spots.push([-2.8 + i * 0.7, 3.42, 0.27]);
+  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; spots.push([Math.cos(a) * 1.7, 5 + Math.sin(a) * 1.7, 0.05]); }
+  for (const [x, z, y] of spots) {
+    mesh(new THREE.CylinderGeometry(0.09, 0.06, 0.07, 8), 0xa0522d, x, y + 0.035, z, fest.diyas).castShadow = false;
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 6), new THREE.MeshBasicMaterial({ color: 0xffb02a }));
+    fl.position.set(x, y + 0.13, z); fest.diyas.add(fl); fest.flames.push(fl);
+  }
+}
+// Fireworks: bursts of glowing points that fall and fade
+const sparks = [];
+// Soft round dot so the sparks glow instead of drawing squares
+const sparkTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const k = c.getContext('2d'), gr = k.createRadialGradient(16, 16, 0, 16, 16, 16);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  k.fillStyle = gr; k.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+})();
+function burst(x, y, z) {
+  const n = 70, pos = new Float32Array(n * 3), vel = [];
+  for (let i = 0; i < n; i++) {
+    pos.set([x, y, z], i * 3);
+    const v = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize().multiplyScalar(rand(5, 8));
+    vel.push(v);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const col = new THREE.Color().setHSL(Math.random(), 1, 0.6);
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: col, map: sparkTex, size: 0.8, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(p); sparks.push({ p, vel, life: 1.6 });
+  const d = Math.hypot(x - player.position.x, z - player.position.z);
+  setTimeout(() => { noise(0.35, Math.max(0.04, 0.3 - d * 0.004), 500); }, d * 12);
+}
+let fireAcc = 0;
+function updateFireworks(dt) {
+  const h = S.time / 60;
+  if (playing && isFest('deepavali') && h >= 18.5 && h < 23.5) {
+    fireAcc -= dt;
+    const mine = S.crackersUntil > S.time;
+    if (fireAcc <= 0) {
+      fireAcc = mine ? rand(0.3, 0.7) : rand(1.5, 4);
+      if (mine) burst(rand(-6, 6), rand(9, 15), rand(-6, 4));
+      else { const a = rand(0, 6.28), r = rand(18, 40); burst(Math.cos(a) * r, rand(18, 28), Math.sin(a) * r); }
+    }
+  }
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i], pos = s.p.geometry.attributes.position.array;
+    s.life -= dt;
+    s.vel.forEach((v, k) => { v.y -= 5 * dt; v.multiplyScalar(0.985); pos[k * 3] += v.x * dt; pos[k * 3 + 1] += v.y * dt; pos[k * 3 + 2] += v.z * dt; });
+    s.p.geometry.attributes.position.needsUpdate = true;
+    s.p.material.opacity = Math.max(0, s.life / 1.6);
+    if (s.life <= 0) { scene.remove(s.p); s.p.geometry.dispose(); s.p.material.dispose(); sparks.splice(i, 1); }
+  }
+}
+function updateFestivals(dt) {
+  const h = S.time / 60, t = performance.now() / 1000;
+  if (fest.kites.visible) fest.kites.children.forEach(k => { k.position.y += Math.sin(t + k.userData.p) * dt * 0.6; k.rotation.z = Math.sin(t * 0.8 + k.userData.p) * 0.3; });
+  if (myKite.visible) { myKite.rotation.z = Math.sin(t * 1.1) * 0.25; myKite.position.y = 17 + Math.sin(t * 0.7) * 0.6; kiteString.geometry.setFromPoints([new THREE.Vector3(KITE_AT.x, 1.2, KITE_AT.z), myKite.position]); }
+  const lit = fest.diyas.visible && (h >= 17.5 || h < 5);
+  fest.flames.forEach(f => { f.visible = lit; f.scale.y = 0.8 + Math.random() * 0.4; });
+  diyaLight.intensity = lit ? 1.4 : 0;
+  updateFireworks(dt);
+}
+
+// Season colours and festival decorations for today
+function applyDay() {
+  const se = season(), f = festival(), id = f && f.id;
+  groundMat.color.set(se.ground); paddyMat.color.set(se.paddy);
+  fest.all.visible = !!f;
+  fest.muggulu.visible = id === 'sankranti' || id === 'deepavali';
+  fest.kites.visible = id === 'sankranti';
+  myKite.visible = kiteString.visible = id === 'sankranti' && !!S.done.fest;
+  fest.pandal.visible = id === 'chavithi';
+  pandalCollider.r = id === 'chavithi' ? 1.9 : -9;
+  fest.diyas.visible = id === 'deepavali';
+  cow.userData.deco.visible = id === 'sankranti';
+}
+
 // Trees: coconut palms and neem trees
 function palm(x, z) {
   const lean = srand(-0.25, 0.25), h = srand(5.5, 7.5);
@@ -679,6 +926,7 @@ const SFX = {
   bell: () => { tone(880, 1.4, 'sine', 0.08); tone(1320, 1, 'sine', 0.03); },
   step: () => noise(0.05, 0.03, 500),
   thunder: () => { noise(2.2, 0.5, 70); setTimeout(() => noise(1.4, 0.3, 110), 250); },
+  jingle: () => { tone(2600, 0.1, 'triangle', 0.025); setTimeout(() => tone(3100, 0.08, 'triangle', 0.02), 70); },
   talk: () => { tone(520, 0.07, 'triangle', 0.04); setTimeout(() => tone(620, 0.07, 'triangle', 0.04), 80); },
 };
 // Steady rain hiss: a looping noise buffer whose volume follows the rain
@@ -715,7 +963,7 @@ function toast(msg, type = '') {
   while ($('toasts').children.length > 3) $('toasts').firstChild.remove();
   setTimeout(() => t.remove(), 3200);
 }
-const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['ball', '⚽'], ['chai', '🍵']];
+const INV_ORDER = [['water', '💧'], ['wood', '🪵'], ['tea', '🌿'], ['seed', '🌱'], ['milk', '🥛'], ['egg', '🥚'], ['veg', '🍅'], ['ball', '⚽'], ['kite', '🪁'], ['fireworks', '🎆'], ['bowl', '🥣'], ['flower', '🌼'], ['chai', '🍵']];
 let invShown = '';
 function renderInventory(changed) {
   const html = INV_ORDER.filter(([k]) => S.inv[k] > 0).map(([k]) => `<div class="inv ${k === changed ? 'pop' : ''}">${ico(k)}${S.inv[k]}</div>`).join('');
@@ -736,14 +984,22 @@ function renderTasks() {
   const el = $('tasks');
   el.classList.toggle('hidden', !tasksOpen);
   if (!tasksOpen) return;
-  el.innerHTML = `<h3>${tr(`Day ${S.day} chores`, `రోజు ${S.day} పనులు`)}</h3>` +
-    TASKS.map(([id, t]) => `<div class="task ${S.done[id] ? 'done' : ''}"><span class="box">${S.done[id] ? '✓' : ''}</span>${tr(...t)}</div>`).join('');
+  const se = season(), f = festival();
+  el.innerHTML = `<h3>${tr(`Day ${S.day} · ${se.name[0]}`, `రోజు ${S.day} · ${se.name[1]}`)}</h3>` +
+    (f ? `<div class="fest-line">${ico(f.icon)} ${tr(`Happy ${f.name[0]}!`, `${f.name[1]} శుభాకాంక్షలు!`)}</div>` : '') +
+    todayTasks().map(([id, t]) => `<div class="task ${S.done[id] ? 'done' : ''}"><span class="box">${S.done[id] ? '✓' : ''}</span>${tr(...t)}</div>`).join('');
 }
+function todayTasks() { const f = festival(); return f ? [...TASKS, ['fest', f.task]] : TASKS; }
 function completeTask(id) {
   if (S.done[id]) return;
   S.done[id] = true;
   renderTasks();
-  if (TASKS.every(([t]) => S.done[t])) {
+  if (id === 'fest') {
+    const f = festival();
+    S.money += 40; S.energy = Math.min(100, S.energy + 20); SFX.good();
+    toast(tr(`${f.emoji} Happy ${f.name[0]}! Festival gift ₹40, energy +20`, `${f.emoji} ${f.name[1]} శుభాకాంక్షలు! పండుగ కానుక ₹40, శక్తి +20`), 'good');
+  }
+  if (todayTasks().every(([t]) => S.done[t])) {
     S.money += 50;
     SFX.good();
     toast(tr('🎉 All chores done! Bonus ₹50. Sleep to start a new day.', '🎉 ఈ రోజు పనులన్నీ పూర్తి! బోనస్ ₹50. కొత్త రోజు కోసం పడుకోండి.'), 'good');
@@ -758,7 +1014,7 @@ let hudAcc = 0;
 function renderHud() {
   const h = S.time / 60;
   const sky = isRaining() ? (S.weather.storm ? 'storm' : 'rain') : h > 6 && h < 18.5 ? 'sun' : 'moon';
-  $('clock').innerHTML = `${ico(sky)} ${tr('Day', 'రోజు')} ${S.day} · ${fmtTime()}`;
+  $('clock').innerHTML = `${ico(sky)}${ico(season().icon)} ${tr('Day', 'రోజు')} ${S.day} · ${fmtTime()}`;
   $('money').innerHTML = `${ico('coin')} ₹${Math.floor(S.money)}`;
   $('energyFill').style.width = S.energy + '%';
   $('energyFill').classList.toggle('low', S.energy < 25);
@@ -770,9 +1026,9 @@ function fmtHour(min) {
 
 // Weather: some days bring rain (sometimes with thunder) for a few hours
 function rollWeather(day) {
-  if (day <= 1 || Math.random() > 0.35) return { rain: false };
+  if (day <= 1 || Math.random() > season(day).rain) return { rain: false };
   const start = Math.round(rand(9.5, 15) * 60);
-  return { rain: true, start, end: start + Math.round(rand(80, 200)), storm: Math.random() < 0.5 };
+  return { rain: true, start, end: start + Math.round(rand(80, 200)), storm: Math.random() < (season(day).id === 'monsoon' ? 0.5 : 0.2) };
 }
 function isRaining() { const w = S.weather; return !!(w && w.rain && S.time >= w.start && S.time < w.end); }
 
@@ -795,8 +1051,9 @@ function closePanel() {
 function pickOption(i) { const o = panelOpts[i]; if (o && !o.disabled) o.fn(); }
 
 const PRICE = { egg: 8, milk: 25, veg: 12 };
+function produceValue() { return S.inv.egg * PRICE.egg + S.inv.milk * PRICE.milk + S.inv.veg * PRICE.veg; }
 function openShop() {
-  const value = S.inv.egg * PRICE.egg + S.inv.milk * PRICE.milk + S.inv.veg * PRICE.veg;
+  const value = produceValue(), f = festival();
   openPanel({
     icon: 'shop', title: tr('Kirana Shop', 'కిరాణా షాప్'),
     text: tr(`"Namaskaram! I buy eggs ₹${PRICE.egg}, milk ₹${PRICE.milk} and tomatoes ₹${PRICE.veg}."`,
@@ -813,6 +1070,8 @@ function openShop() {
         fn: () => { S.money -= 15; S.inv.tea++; SFX.coin(); renderInventory('tea'); openShop(); } },
       { label: tr('Buy 6 tomato seeds · ₹10', '6 టమాటా విత్తనాలు · ₹10'), disabled: S.money < 10,
         fn: () => { S.money -= 10; S.inv.seed += 6; SFX.coin(); renderInventory('seed'); openShop(); } },
+      ...(f ? [{ label: `${f.emoji} ${tr(f.itemName[0], f.itemName[1])} · ₹${f.price}`, disabled: S.money < f.price || S.inv[f.item] > 0 || !!S.done.fest,
+        fn: () => { S.money -= f.price; S.inv[f.item] = 1; SFX.coin(); renderInventory(f.item); openShop(); } }] : []),
     ],
   });
   renderHud();
@@ -959,6 +1218,32 @@ const spots = [
       }
       renderFarm(); renderInventory(); completeTask('farm');
     } },
+  { at: cart.g.position, r: 2.6, label: () => tr('Ride the bullock cart', 'ఎడ్ల బండి ఎక్కు'), need: () => '', time: 0.5, start: SFX.jingle, done: () => mountCart() },
+  { at: TOWN, r: 5, ride: true, label: () => tr('Sell at the town market (×1.5)', 'పట్నం సంతలో అమ్ము (×1.5)'),
+    need: () => !riding ? tr('Come with the bullock cart', 'ఎడ్ల బండి మీద రండి')
+      : S.townDay === S.day ? tr('Already went to town today', 'ఈ రోజు పట్నం వెళ్ళారు')
+      : !produceValue() ? tr('Nothing to sell', 'అమ్మడానికి ఏమీ లేదు') : '',
+    time: 1, start: SFX.jingle,
+    done: () => {
+      const value = Math.round(produceValue() * 1.5);
+      S.money += value; S.inv.egg = 0; S.inv.milk = 0; S.inv.veg = 0; S.townDay = S.day;
+      S.time = Math.min(S.time + 90, 22.9 * 60); fade();
+      SFX.coin(); renderInventory(); renderHud(); completeTask('sell');
+      toast(tr(`🐂 Town market trip! Sold for ₹${value} (+1.5 hours)`, `🐂 పట్నం సంత! ₹${value} కి అమ్మారు (+1.5 గంటలు)`), 'good');
+    } },
+  { at: KITE_AT, r: 3.2, hidden: () => !isFest('sankranti'), label: () => tr('Fly a kite', 'గాలిపటం ఎగరేయి'),
+    need: () => S.done.fest ? tr('Your kite is flying high!', 'మీ గాలిపటం ఎగురుతోంది!') : !S.inv.kite ? tr('Buy a kite at the shop', 'షాప్‌లో గాలిపటం కొనండి') : '',
+    time: 3, start: SFX.good,
+    done: () => { S.inv.kite = 0; myKite.visible = kiteString.visible = true; renderInventory(); completeTask('fest'); } },
+  { at: GANESHA_FRONT, r: 3, hidden: () => !isFest('chavithi'), label: () => tr('Do Ganesha pooja', 'వినాయక పూజ చేయి'),
+    need: () => S.done.fest ? tr('Pooja done. Jai Ganesha!', 'పూజ అయింది. జై గణేశ!') : !S.inv.flower ? tr('Buy pooja items at the shop', 'షాప్‌లో పూజ సామాను కొనండి') : '',
+    time: 3, start: SFX.bell,
+    done: () => { S.inv.flower = 0; renderInventory(); completeTask('fest'); } },
+  { at: new THREE.Vector3(0, 0, 5), r: 2.3, hidden: () => !isFest('deepavali'), label: () => tr('Burst crackers', 'టపాకాయలు కాల్చు'),
+    need: () => S.done.fest ? tr('Happy Deepavali!', 'దీపావళి శుభాకాంక్షలు!') : !S.inv.fireworks ? tr('Buy crackers at the shop', 'షాప్‌లో టపాకాయలు కొనండి')
+      : S.time < 18 * 60 ? tr('Wait for the evening (after 6 PM)', 'సాయంత్రం 6 తర్వాత కాల్చండి') : '',
+    time: 1.2,
+    done: () => { S.inv.fireworks = 0; S.crackersUntil = S.time + 25; fireAcc = 0; renderInventory(); completeTask('fest'); } },
   { at: BALL_AT, r: 1.8, hidden: () => !ballMesh.visible, label: () => tr('Pick up the ball', 'బంతి తీసుకో'), need: () => '', time: 0.4,
     done: () => { S.inv.ball = 1; ballMesh.visible = false; SFX.good(); renderInventory('ball'); toast(tr('⚽ Found it! Take it to Chintu.', '⚽ దొరికింది! చింటుకి ఇవ్వండి.'), 'good'); } },
   ...villagers.map(v => ({ at: v.g.position, r: 2.6, hidden: () => !v.g.visible, label: () => tr(`Talk to ${v.names[1]}`, `${v.names[0]}తో మాట్లాడు`),
@@ -971,6 +1256,40 @@ const spots = [
     need: () => (S.time < 19 * 60 && S.energy > 20) ? tr('Sleep after 7 PM (or when tired)', 'రాత్రి 7 తర్వాత నిద్రపోండి (లేదా అలసినప్పుడు)') : '',
     time: 1.2, done: () => sleep() },
 ];
+// Ugadi pachadi takes over the chulha while you hold the items, so it goes first
+spots.unshift({ at: CHULHA, r: 2.3, hidden: () => !(isFest('ugadi') && S.inv.bowl && !S.done.fest), label: () => tr('Make Ugadi pachadi', 'ఉగాది పచ్చడి చేయి'),
+  need: () => '', time: 2.5, start: SFX.chop,
+  done: () => { S.inv.bowl = 0; renderInventory(); toast(tr('🥭 Sweet, sour, bitter, spicy: the taste of a new year!', '🥭 తీపి, పులుపు, చేదు, కారం: కొత్త సంవత్సరం రుచి!')); completeTask('fest'); } });
+const DISMOUNT = { at: new THREE.Vector3(), r: 9, label: () => tr('Get down', 'బండి దిగు'), need: () => '', time: 0.3, done: () => dismountCart() };
+let riding = false;
+function mountCart() {
+  riding = true; cart.speed = 0;
+  yaw = cart.g.rotation.y + Math.PI; pitch = -0.12;
+  toast(IS_TOUCH ? tr('🐂 Joystick: up = go, sideways = turn', '🐂 జాయ్‌స్టిక్: పైకి = ముందుకు, పక్కకి = తిరగడం') : tr('🐂 W/S: go/back · A/D: turn · E: get down', '🐂 W/S: ముందుకు/వెనక్కి · A/D: తిరగడం · E: దిగు'));
+}
+function dismountCart() {
+  riding = false; cart.speed = 0;
+  const r = cart.g.rotation.y;
+  player.position.set(cart.g.position.x + Math.cos(r) * 1.9, 0, cart.g.position.z - Math.sin(r) * 1.9);
+  collide(player.position);
+  camera.position.y = 1.62;
+  save();
+}
+function driveCart(dt, fx, fz) {
+  const g = cart.g, rot = g.rotation.y;
+  const throttle = Math.max(-1, Math.min(1, -fz));
+  cart.speed += ((throttle > 0 ? throttle * 6.5 : throttle * 2.5) - cart.speed) * Math.min(1, dt * 2.2);
+  if (Math.abs(cart.speed) < 0.02 && !throttle) cart.speed = 0;
+  const dRot = -Math.max(-1, Math.min(1, fx)) * 1.2 * dt * Math.min(1, Math.abs(cart.speed) / 1.5) * Math.sign(cart.speed);
+  const nr = rot + dRot, nx = g.position.x + Math.sin(nr) * cart.speed * dt, nz = g.position.z + Math.cos(nr) * cart.speed * dt;
+  if (!cartBlocked(nx, nz, nr) || cartBlocked(g.position.x, g.position.z, rot)) { g.position.x = nx; g.position.z = nz; g.rotation.y = nr; yaw += dRot; }
+  else cart.speed = 0;
+  const r = g.rotation.y;
+  player.position.set(g.position.x + Math.sin(r) * 0.3, 0, g.position.z + Math.cos(r) * 0.3);
+  cart.phase += dt * cart.speed * 2.4;
+  camera.position.y = 2.45 + Math.abs(Math.sin(cart.phase)) * 0.04 * Math.min(1, Math.abs(cart.speed));
+  if (Math.abs(cart.speed) > 0.5) { stepAcc += dt; if (stepAcc > 0.5) { stepAcc = 0; SFX.jingle(); } }
+}
 EGG_SPOTS.forEach(([x, z], i) => spots.push({
   at: new THREE.Vector3(x, 0, z), r: 1.5, egg: i, label: () => tr('Pick up egg', 'గుడ్డు తీసుకో'), need: () => '', time: 0.5, start: SFX.cluck,
   hidden: () => !S.eggsLeft[i],
@@ -985,6 +1304,7 @@ function nearestSpot() {
   let best = null, bestD = Infinity;
   const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
   for (const s of spots) {
+    if (riding ? !s.ride : false) continue;
     if (s.hidden && s.hidden()) continue;
     const dx = s.at.x - player.position.x, dz = s.at.z - player.position.z, d = Math.hypot(dx, dz);
     if (d > s.r) continue;
@@ -992,6 +1312,7 @@ function nearestSpot() {
     if (d > 1.2 && facing < 0.2) continue;
     if (d < bestD) { bestD = d; best = s; }
   }
+  if (riding && (!best || best.need())) return DISMOUNT;
   return best;
 }
 function updatePrompt() {
@@ -1045,13 +1366,18 @@ function sleep() {
   for (const k in S.quests) if (S.quests[k] === 'done') S.quests[k] = 'new';
   S.weather = rollWeather(S.day);
   if (panelOpen) closePanel();
+  if (riding) dismountCart();
+  S.crackersUntil = 0;
+  applyDay();
   // Wake up on the doorstep, looking out at the village
   player.position.set(0, 0, 5.4); yaw = Math.PI; pitch = 0;
   if (S.stove.state === 'cooking') S.stove.state = 'ready';
   renderTasks(); renderInventory();
   fade();
   SFX.good();
-  toast(tr(`🌅 Good morning! Day ${S.day}`, `🌅 శుభోదయం! రోజు ${S.day}`), 'good');
+  const se = season(), f = festival(), newSeason = (dayOfYear() - 1) % 7 === 0;
+  if (f) toast(tr(`${f.emoji} Happy ${f.name[0]}! Day ${S.day}`, `${f.emoji} ${f.name[1]} శుభాకాంక్షలు! రోజు ${S.day}`), 'good');
+  else toast(tr(`🌅 Good morning! Day ${S.day}`, `🌅 శుభోదయం! రోజు ${S.day}`) + (newSeason ? tr(` · ${se.name[0]} begins`, ` · ${se.name[1]} మొదలైంది`) : ''), 'good');
   if (S.weather.rain) toast(tr(`🌦️ Rain expected around ${fmtHour(S.weather.start)} today`, `🌦️ ఈ రోజు ${fmtHour(S.weather.start)} కి వర్షం వచ్చేలా ఉంది`));
   if (S.farm.some(p => p.stage === 3)) toast(tr('🍅 Your tomatoes are ripe! Harvest them.', '🍅 టమాటాలు పండాయి! కోయండి.'), 'good');
   save();
@@ -1153,8 +1479,8 @@ let confirmReset = false;
 function renderMenu() {
   document.documentElement.lang = isTe() ? 'te' : 'en';
   document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.id === (isTe() ? 'te' : 'en')));
-  $('menuText').textContent = tr('Live in a Telugu village: fetch water from the well, make chai on the chulha, grow tomatoes, help the villagers and sell at the kirana shop. Watch out for the rain!',
-    'తెలుగు పల్లెటూరిలో జీవించండి: బావి నీళ్ళు, పొయ్యి మీద చాయ్, పొలంలో టమాటాలు, ఊరి వాళ్ళకి సాయం, కిరాణా షాప్‌లో అమ్మకం. వర్షం కూడా వస్తుంది!');
+  $('menuText').textContent = tr('Live in a Telugu village: fetch water from the well, make chai on the chulha, grow tomatoes, help the villagers, ride the bullock cart to town and celebrate Sankranti, Ugadi and more through the seasons.',
+    'తెలుగు పల్లెటూరిలో జీవించండి: బావి నీళ్ళు, పొయ్యి మీద చాయ్, పొలంలో టమాటాలు, ఊరి వాళ్ళకి సాయం, ఎడ్ల బండి మీద పట్నం, కాలాలతో పాటు సంక్రాంతి, ఉగాది పండుగలు.');
   $('playBtn').textContent = S.day > 1 || S.done.water ? tr('▶ Continue', '▶ కొనసాగించు') : tr('▶ Play', '▶ ఆడండి');
   $('soundBtn').textContent = (S.sound ? '🔊 ' : '🔇 ') + tr('Sound', 'సౌండ్');
   $('resetBtn').textContent = '🗑️ ' + tr('New game', 'కొత్త గేమ్');
@@ -1193,6 +1519,10 @@ function collide(p) {
   for (const c of colliders) {
     const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), min = c.r + 0.35;
     if (d < min && d > 0.0001) { p.x = c.x + dx / d * min; p.z = c.z + dz / d * min; }
+  }
+  if (!riding) for (const [cx, cz, cr] of cartCircles(cart.g.position.x, cart.g.position.z, cart.g.rotation.y)) {
+    const dx = p.x - cx, dz = p.z - cz, d = Math.hypot(dx, dz), min = cr + 0.35;
+    if (d < min && d > 0.0001) { p.x = cx + dx / d * min; p.z = cz + dz / d * min; }
   }
   for (const v of villagers) {
     if (!v.g.visible) continue;
@@ -1239,18 +1569,20 @@ function frame() {
     if (keys.KeyD || keys.ArrowRight) fx += 1;
     fx += joy.x; fz += joy.y;
     const len = Math.hypot(fx, fz);
-    if (len > 0.1 && !busy && !panelOpen) {
+    if (riding) driveCart(dt, busy || panelOpen ? 0 : fx, busy || panelOpen ? 0 : fz);
+    else if (len > 0.1 && !busy && !panelOpen) {
       const run = (running || keys.ShiftLeft || keys.ShiftRight) && S.energy > 0;
       const speed = (S.energy <= 0 ? 1.8 : run ? 5.6 : 3.4) * Math.min(1, len);
       move.set(fx / len, 0, fz / len).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(speed * dt);
       player.position.add(move);
       collide(player.position);
-      S.energy = Math.max(0, S.energy - dt * (run ? 0.6 : 0.18));
+      const hour = S.time / 60, heat = season().id === 'summer' && hour > 11 && hour < 16 && wet < 0.3 ? 1.6 : 1; // summer afternoons tire you faster
+      S.energy = Math.max(0, S.energy - dt * (run ? 0.6 : 0.18) * heat);
       bob += dt * (run ? 13 : 9);
       stepAcc += dt * (run ? 1.6 : 1);
       if (stepAcc > 0.45) { stepAcc = 0; SFX.step(); }
     }
-    camera.position.y = 1.62 + Math.sin(bob) * 0.035;
+    if (!riding) camera.position.y = 1.62 + Math.sin(bob) * 0.035;
     // Game time: 1 real second = 1 village minute
     S.time += dt;
     if (S.time >= 24 * 60) { S.time = 23.99 * 60; }
@@ -1299,6 +1631,11 @@ function frame() {
   }
   cow.children[1].rotation.z = Math.sin(performance.now() / 900) * 0.08;
   updateVillagers(dt);
+  // Cart wheels turn and the bulls walk
+  cart.wheels.forEach(w => { w.rotation.x += cart.speed * dt / 0.7; });
+  cart.legs.forEach((l, i) => { l.rotation.x = Math.sin(cart.phase * 2 + (i % 2 ? Math.PI : 0) + (i > 3 ? 1 : 0)) * 0.4 * Math.min(1, Math.abs(cart.speed)); });
+  cart.tails.forEach((t, i) => { t.rotation.z = Math.sin(performance.now() / 500 + i) * 0.25; });
+  updateFestivals(dt);
   updateWeather(dt);
   updateRain(dt);
 
@@ -1315,6 +1652,7 @@ hydrateIcons();
 S.eggsLeft.forEach((left, i) => { eggMeshes[i].visible = left; });
 renderFarm();
 placeBall();
+applyDay();
 renderMenu();
 updateSky();
 addEventListener('beforeunload', save);
@@ -1337,6 +1675,13 @@ if (new URLSearchParams(location.search).has('debug')) {
     sleep,
     setRain(on, storm = true) { S.weather = on ? { rain: true, start: S.time - 1, end: S.time + 240, storm } : { rain: false }; },
     get wet() { return wet; },
+    get riding() { return riding; },
+    cartAt() { return [cart.g.position.x, cart.g.position.z, cart.g.rotation.y]; },
+    // Drive the cart with steady input for some seconds
+    drive(fx, fz, secs) { return new Promise(res => { const t0 = performance.now(); keys.KeyW = fz < 0; keys.KeyS = fz > 0; keys.KeyA = fx < 0; keys.KeyD = fx > 0;
+      const tick = () => { if (performance.now() - t0 > secs * 1000) { keys.KeyW = keys.KeyS = keys.KeyA = keys.KeyD = false; res(); } else setTimeout(tick, 50); }; tick(); }); },
+    setDay(d) { S.day = d; S.done = {}; applyDay(); renderTasks(); },
+    get sparks() { return sparks.length; },
     ballAt() { return [BALL_AT.x, BALL_AT.z]; },
   };
 }
